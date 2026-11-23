@@ -4,7 +4,7 @@ import 'package:camera_ip_search_mobile/services/onvif_device_service.dart';
 
 void main() {
   group('ONVIF endpoint safety', () {
-    const service = OnvifDeviceService();
+    final service = OnvifDeviceService();
 
     test('accepts same-host HTTP device service URL', () {
       final device = CameraDevice(
