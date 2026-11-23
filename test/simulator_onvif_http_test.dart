@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:camera_ip_search_mobile/models/camera_device.dart';
@@ -18,6 +17,8 @@ void main() {
         await request.response.close();
       } on SocketException {
         // The ONVIF client intentionally aborts an oversized response stream.
+      } on HttpException {
+        // The HTTP server may report the same expected client-side abort.
       }
     }
   }
