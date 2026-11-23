@@ -43,9 +43,9 @@ Status distinguishes a mobile code path from verified physical-device behavior.
 
 ## Platform-specific parity gaps
 
-- Android local-network permission and multicast lock are bridged in the generated runner; verify targetSdk/API 37 behavior on real devices.
+- Android local-network permission, multicast lock, MTU and link-state diagnostics are bridged in the generated runner; verify targetSdk/API 37 behavior on real devices.
 - iOS adds the local-network usage description, but Apple's multicast entitlement is still required for UDP multicast/broadcast. Until approved and tested, iOS discovery is not confirmed.
-- Dart's network interface API exposes fewer link diagnostics than Qt's desktop API. Interface name and IPv4 addresses are available; desktop MTU/broadcast/link-state parity requires native per-platform work.
+- Native interface diagnostics are bridged from Android (MTU and link state) and iOS (link state; MTU is not exposed by the current bridge). Interface address/prefix/broadcast remain subject to what the OS exposes through Dart. Validate all fields on physical devices.
 
 ## Quality gates
 
