@@ -8,8 +8,10 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'models/camera_device.dart';
+import 'models/operation_history_entry.dart';
 import 'services/device_discovery_service.dart';
 import 'services/inventory_store.dart';
+import 'services/diagnostics_service.dart';
 import 'services/onvif_device_service.dart';
 import 'services/network_config_validator.dart';
 
@@ -37,6 +39,8 @@ class DashboardPage extends StatefulWidget {
 class _DashboardPageState extends State<DashboardPage> {
   late final DeviceDiscoveryService discovery;
   final store = InventoryStore();
+  final diagnostics = DiagnosticsService();
+  List<OperationHistoryEntry> historyEntries = [];
   final search = TextEditingController();
   final selected = <String>{};
   List<NetworkInterface> interfaces = [];
@@ -50,7 +54,11 @@ class _DashboardPageState extends State<DashboardPage> {
   @override
   void initState() {
     super.initState();
-    discovery = DeviceDiscoveryService(onvifService: OnvifDeviceService(requestCredentials: _credentials));
+    discovery = DeviceDiscoveryService(
+      onvifService: OnvifDeviceService(requestCredentials: _credentials),
+      onOperation: (operation, target, outcome, details) =>
+          unawaited(_record(operation, target, outcome, details)),
+    );
     discovery.addListener(_changed);
     unawaited(_load());
   }
@@ -73,11 +81,14 @@ class _DashboardPageState extends State<DashboardPage> {
   Future<void> _load() async {
     try {
       final saved = await store.load();
+      final integrity = await store.integrityCheck();
+      if (integrity.toLowerCase() != 'ok') throw StateError('SQLite integrity check failed: $integrity');
+      final history = await store.loadHistory();
       final found = await NetworkInterface.list(type: InternetAddressType.IPv4, includeLoopback: false, includeLinkLocal: true);
       if (!mounted) return;
       for (final d in saved) { discovery.restoreDevice(d); }
       _lastInventorySnapshot = jsonEncode(discovery.devices.map((d) => d.toJson()).toList());
-      setState(() { interfaces = found; interfaceName = found.isEmpty ? null : found.first.name; loading = false; });
+      setState(() { interfaces = found; interfaceName = found.isEmpty ? null : found.first.name; historyEntries = history; loading = false; });
     } catch (e) { if (mounted) setState(() => loading = false); _msg('Inventory load failed: $e'); }
   }
 
@@ -134,6 +145,38 @@ class _DashboardPageState extends State<DashboardPage> {
   String _key(CameraDevice d) => d.macAddress.isNotEmpty ? d.macAddress : d.id;
   void _msg(String text) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text))); }
 
+  Future<void> _record(String operation, String target, String outcome, String details) async {
+    try {
+      await store.recordOperation(operation: operation, target: target, outcome: outcome, details: details);
+      await diagnostics.log(outcome.toLowerCase() == 'failed' ? 'error' : 'info',
+          '$operation | $target | $outcome | $details');
+      final entries = await store.loadHistory();
+      if (mounted) setState(() => historyEntries = entries);
+    } catch (error) {
+      await diagnostics.log('error', 'Operation history write failed: $error');
+    }
+  }
+
+  Future<void> _refreshHistory() async {
+    try {
+      final entries = await store.loadHistory();
+      if (mounted) setState(() => historyEntries = entries);
+    } catch (error) {
+      _msg('Could not load operation history: $error');
+    }
+  }
+
+  Future<void> _refreshDevice(CameraDevice device) async {
+    try {
+      await discovery.refreshDeviceInfo(device);
+      await _record('Device information refresh', device.ipAddress, 'Completed',
+          'ONVIF identity, capabilities and available network details refreshed.');
+    } catch (error) {
+      await _record('Device information refresh', device.ipAddress, 'Failed', error.toString());
+      _msg('Device refresh failed: $error');
+    }
+  }
+
   List<CameraDevice> get visible => discovery.devices.where((d) {
     final q = search.text.trim().toLowerCase();
     final match = q.isEmpty || [d.ipAddress,d.macAddress,d.manufacturer,d.model,d.serialNumber,d.hardwareId,d.userLabel,d.firmwareVersion].any((v)=>v.toLowerCase().contains(q));
@@ -170,7 +213,13 @@ class _DashboardPageState extends State<DashboardPage> {
   Future<void> _manual() async {
     final value = await _ask('Add device manually','Camera IPv4 address',hint:'192.168.1.100');
     if (value == null || !mounted) return;
-    try { await discovery.addManualDevice(value); } on FormatException catch(e) { _msg(e.message); }
+    try {
+      await discovery.addManualDevice(value);
+      await _record('Manual device entry', value, 'Completed', 'Device added to local inventory.');
+    } on FormatException catch(e) {
+      await _record('Manual device entry', value, 'Failed', e.message);
+      _msg(e.message);
+    }
   }
 
   Future<void> _subnet() async {
@@ -201,7 +250,10 @@ class _DashboardPageState extends State<DashboardPage> {
 
   Future<void> _rename(CameraDevice d) async {
     final value = await _ask('Rename device label','Device label',initial:d.userLabel,hint:'Front gate camera');
-    if(value != null && mounted) discovery.updateDevice(d.copyWith(userLabel:value));
+    if(value != null && mounted) {
+      discovery.updateDevice(d.copyWith(userLabel:value));
+      await _record('Device label', d.ipAddress, 'Completed', 'Local device label updated.');
+    }
   }
 
   Future<void> _export() async {
@@ -213,6 +265,7 @@ class _DashboardPageState extends State<DashboardPage> {
     final dir=await getTemporaryDirectory(), file=File('${dir.path}/oxita-camera-inventory.csv');
     await file.writeAsString('\uFEFF${rows.map((r)=>r.map(field).join(',')).join('\r\n')}\r\n',flush:true);
     await Share.shareXFiles([XFile(file.path)],text:'Oxita camera inventory');
+    await _record('Inventory export', 'oxita-camera-inventory.csv', 'Prepared', '${visible.length} filtered device row(s) exported.');
   }
 
   Future<void> _previewStaticIpv4(CameraDevice d) async {
@@ -243,6 +296,7 @@ class _DashboardPageState extends State<DashboardPage> {
     );
     if (error != null) { _msg(error); return; }
     if (!mounted) return;
+    await _record('Static IPv4 preview', d.ipAddress, 'Validated', 'Local validation passed for proposed address ${values[0]}; no camera request was sent.');
     await showDialog<void>(context: context, builder: (context) => AlertDialog(
       title: const Text('Static IPv4 preview'),
       content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -305,8 +359,15 @@ class _DashboardPageState extends State<DashboardPage> {
       actions:[TextButton(onPressed:()=>Navigator.pop(context,false),child:const Text('Go back')),
         FilledButton(onPressed:()=>Navigator.pop(context,true),child:const Text('Apply'))]));
     if(ok!=true || !mounted)return;
-    try { final result=await discovery.applyStaticIpv4(d,address:values[0],subnetMask:values[1],gateway:values[2]); await store.save(discovery.devices); _msg(result.message); }
-    on OnvifException catch(e){_msg(e.message);}
+    try {
+      final result=await discovery.applyStaticIpv4(d,address:values[0],subnetMask:values[1],gateway:values[2]);
+      await store.save(discovery.devices);
+      await _record('Static IPv4', d.ipAddress, result.verified ? 'Verified' : 'Not verified', result.message);
+      _msg(result.message);
+    } on OnvifException catch(e) {
+      await _record('Static IPv4', d.ipAddress, 'Failed', e.message);
+      _msg(e.message);
+    }
   }
 
   Future<void> _details(CameraDevice d) async {
@@ -326,7 +387,7 @@ class _DashboardPageState extends State<DashboardPage> {
         ].map((e)=>_detail(e[0],e[1])),
         const SizedBox(height:14),
         Wrap(spacing:8,runSpacing:8,children:[
-          OutlinedButton.icon(onPressed:(){Navigator.pop(context);unawaited(discovery.refreshDeviceInfo(d));},icon:const Icon(Icons.refresh),label:const Text('Refresh info')),
+          OutlinedButton.icon(onPressed:(){Navigator.pop(context);unawaited(_refreshDevice(d));},icon:const Icon(Icons.refresh),label:const Text('Refresh info')),
           OutlinedButton.icon(onPressed:(){Navigator.pop(context);unawaited(_rename(d));},icon:const Icon(Icons.edit),label:const Text('Rename')),
           OutlinedButton.icon(onPressed:d.ipv4ConfigurationKnown && d.networkInterfaceToken.isNotEmpty?(){Navigator.pop(context);unawaited(_previewStaticIpv4(d));}:null,icon:const Icon(Icons.preview_outlined),label:const Text('Preview IP')),
           OutlinedButton.icon(onPressed:d.ipv4ConfigurationKnown && d.networkInterfaceToken.isNotEmpty?(){Navigator.pop(context);unawaited(_staticIp(d));}:null,icon:const Icon(Icons.settings_ethernet),label:const Text('Apply static IPv4')),
@@ -469,7 +530,7 @@ class _DashboardPageState extends State<DashboardPage> {
       const SizedBox(height: 8),
       Row(children: [
         Expanded(child: OutlinedButton.icon(
-          onPressed: () => unawaited(discovery.refreshDeviceInfo(device)),
+          onPressed: () => unawaited(_refreshDevice(device)),
           icon: const Icon(Icons.refresh), label: const Text('Refresh info'),
         )),
         const SizedBox(width: 8),
@@ -518,6 +579,103 @@ class _DashboardPageState extends State<DashboardPage> {
     ]);
   }
 
+
+  Future<void> _exportDiagnostics() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Review diagnostic export'),
+        content: const Text(
+          'The support bundle includes OS/app details, local IPv4 interface addresses, recent operation history and redacted rotating logs. '
+          'It excludes the inventory database, camera credentials and ONVIF interface tokens. '
+          'Local addresses, camera IPs and activity timestamps may still be sensitive. You will be able to inspect the bundle before sharing.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Continue')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      final history = await store.loadHistory(limit: 250);
+      final count = await store.deviceCount();
+      final content = await diagnostics.buildSupportBundle(history: history, deviceCount: count);
+      if (!mounted) return;
+      final share = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Inspect diagnostic bundle'),
+          content: SizedBox(
+            width: 620,
+            height: 420,
+            child: SingleChildScrollView(child: SelectableText(content, style: const TextStyle(fontSize: 11))),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+            FilledButton.icon(onPressed: () => Navigator.pop(context, true), icon: const Icon(Icons.share), label: const Text('Share bundle')),
+          ],
+        ),
+      );
+      if (share != true || !mounted) return;
+      final directory = await getTemporaryDirectory();
+      final file = File('${directory.path}/oxita-mobile-diagnostics.txt');
+      await file.writeAsString(content, flush: true);
+      await Share.shareXFiles([XFile(file.path)], text: 'Oxita Camera IP Search diagnostic bundle');
+      await _record('Diagnostic export', file.uri.pathSegments.last, 'Prepared',
+          'User inspected the redacted support bundle before opening the share sheet.');
+    } catch (error) {
+      await diagnostics.log('error', 'Diagnostic export failed: $error');
+      _msg('Diagnostic export failed: $error');
+    }
+  }
+
+  Widget _history() => RefreshIndicator(
+    onRefresh: _refreshHistory,
+    child: ListView(
+      padding: const EdgeInsets.all(18),
+      children: [
+        _heading('Operation history', 'Local audit trail for discovery and device-management actions'),
+        const SizedBox(height: 8),
+        const Text(
+          'The latest 1,000 events are retained on this device. Sensitive-looking values are redacted before persistence; diagnostic redaction is best-effort.',
+          style: TextStyle(color: muted, fontSize: 12, height: 1.4),
+        ),
+        const SizedBox(height: 12),
+        Row(children: [
+          Expanded(child: OutlinedButton.icon(onPressed: _refreshHistory, icon: const Icon(Icons.refresh), label: const Text('Refresh'))),
+          const SizedBox(width: 8),
+          Expanded(child: FilledButton.icon(onPressed: _exportDiagnostics, icon: const Icon(Icons.support_agent), label: const Text('Export diagnostics'))),
+        ]),
+        const SizedBox(height: 12),
+        if (historyEntries.isEmpty)
+          const Card(child: Padding(padding: EdgeInsets.all(22), child: Text('No operations recorded yet. Discovery, scans and device changes will appear here.')))
+        else
+          ...historyEntries.map((entry) => Card(
+            margin: const EdgeInsets.only(bottom: 8),
+            child: ListTile(
+              leading: Icon(
+                entry.outcome.toLowerCase().contains('fail') ? Icons.error_outline :
+                entry.outcome.toLowerCase().contains('cancel') ? Icons.cancel_outlined :
+                Icons.history,
+                color: entry.outcome.toLowerCase().contains('fail') ? const Color(0xFFE58B82) : red,
+              ),
+              title: Text(entry.operation, style: const TextStyle(fontWeight: FontWeight.w700)),
+              subtitle: Padding(
+                padding: const EdgeInsets.only(top: 5),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('${entry.outcome} · ${entry.target.isEmpty ? 'Local operation' : entry.target}'),
+                  if (entry.details.isNotEmpty) Text(entry.details, style: const TextStyle(color: muted, fontSize: 11)),
+                  Text(entry.occurredAt.toLocal().toString(), style: const TextStyle(color: muted, fontSize: 10)),
+                ]),
+              ),
+              isThreeLine: true,
+            ),
+          )),
+      ],
+    ),
+  );
+
   Widget _settings()=>FutureBuilder<String>(future:store.databasePath,builder:(context,s)=>ListView(padding:const EdgeInsets.all(18),children:[
     _heading('Application settings','Local inventory and platform information'),
     Card(child:Padding(padding:const EdgeInsets.all(14),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
@@ -540,12 +698,13 @@ class _DashboardPageState extends State<DashboardPage> {
         Text('CAMERA DEVICE MANAGER',style:TextStyle(fontSize:9,color:muted,letterSpacing:1)),
       ]),
     ]),actions:[IconButton(onPressed:()=>unawaited(_help()),icon:const Icon(Icons.help_outline),tooltip:'Help'),IconButton(onPressed:()=>unawaited(_manual()),icon:const Icon(Icons.add_circle_outline),tooltip:'Add device'),IconButton(onPressed:()=>unawaited(_export()),icon:const Icon(Icons.file_download),tooltip:'Export CSV')]),
-    body:SafeArea(child:IndexedStack(index:tab,children:[_overview(),_devices(),_tools(),_maintenance(),_settings()])),
+    body:SafeArea(child:IndexedStack(index:tab,children:[_overview(),_devices(),_tools(),_maintenance(),_history(),_settings()])),
     floatingActionButton:tab<2?FloatingActionButton.extended(onPressed:()=>unawaited(_discover()),backgroundColor:red,foregroundColor:Colors.white,
       icon:Icon(discovery.isScanning?Icons.stop:Icons.radar),label:Text(discovery.isScanning?'Stop discovery':'Discover devices')):null,
     bottomNavigationBar:NavigationBar(selectedIndex:tab,onDestinationSelected:(v)=>setState(()=>tab=v),destinations:const[
       NavigationDestination(icon:Icon(Icons.grid_view),label:'Overview'),NavigationDestination(icon:Icon(Icons.videocam_outlined),label:'Devices'),
       NavigationDestination(icon:Icon(Icons.tune),label:'Tools'),NavigationDestination(icon:Icon(Icons.build_outlined),label:'Maintenance'),
+      NavigationDestination(icon:Icon(Icons.history),label:'History'),
       NavigationDestination(icon:Icon(Icons.settings_outlined),label:'Settings'),
     ]),
   );
