@@ -17,8 +17,8 @@ class DiagnosticsService {
 
   Future<Directory> _logDirectory() async {
     if (_logDirectoryOverride != null) {
-      if (!await _logDirectoryOverride!.exists()) await _logDirectoryOverride!.create(recursive: true);
-      return _logDirectoryOverride!;
+      if (!await _logDirectoryOverride.exists()) await _logDirectoryOverride.create(recursive: true);
+      return _logDirectoryOverride;
     }
     final root = await getApplicationSupportDirectory();
     final directory = Directory(p.join(root.path, 'logs'));
