@@ -9,7 +9,7 @@ import 'network_config_validator.dart';
 class OnvifDeviceService {
   OnvifDeviceService({this.requestCredentials});
 
-  final Future<OnvifCredentials?> Function(String host, String realm)? requestCredentials;
+  final Future<OnvifCredentials?> Function(String host, String realm, String scheme)? requestCredentials;
   final Map<String, OnvifCredentials> _sessionCredentials = {};
   final Set<HttpClient> _activeClients = {};
 
@@ -239,14 +239,14 @@ class OnvifDeviceService {
     _activeClients.add(client);
     final cached = _sessionCredentials[uri.host];
     if (cached != null) {
-      client.addCredentials(uri, cached.realm, HttpClientBasicCredentials(cached.username, cached.password));
+      client.addCredentials(uri, cached.realm, _httpCredentials(cached));
     }
     client.authenticate = (url, scheme, realm) async {
       final credentials = _sessionCredentials[url.host] ??
-          await requestCredentials?.call(url.host, realm ?? '');
+          await requestCredentials?.call(url.host, realm ?? '', scheme);
       if (credentials == null) return false;
       _sessionCredentials[url.host] = credentials;
-      client.addCredentials(url, credentials.realm, HttpClientBasicCredentials(credentials.username, credentials.password));
+      client.addCredentials(url, credentials.realm.isEmpty ? (realm ?? '') : credentials.realm, _httpCredentials(credentials));
       return true;
     };
     try {
@@ -281,6 +281,11 @@ class OnvifDeviceService {
       client.close(force: true);
     }
   }
+
+  static HttpClientCredentials _httpCredentials(OnvifCredentials credentials) =>
+      credentials.scheme.toLowerCase() == 'digest'
+          ? HttpClientDigestCredentials(credentials.username, credentials.password)
+          : HttpClientBasicCredentials(credentials.username, credentials.password);
 
   static String _envelope(String operation, String body) =>
       '<?xml version="1.0" encoding="UTF-8"?>'
@@ -346,8 +351,8 @@ class OnvifDeviceService {
 }
 
 class OnvifCredentials {
-  const OnvifCredentials(this.username, this.password, {this.realm = ''});
-  final String username, password, realm;
+  const OnvifCredentials(this.username, this.password, {this.realm = '', this.scheme = 'basic'});
+  final String username, password, realm, scheme;
 }
 
 class OnvifWriteResult {
