@@ -44,6 +44,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
   final search = TextEditingController();
   final selected = <String>{};
   List<NetworkInterface> interfaces = [];
+  Map<String, dynamic>? nativeInterfaceDetails;
   int tab = 0;
   bool loading = true, checking = false;
   String? interfaceName, focusedDeviceKey;
@@ -90,6 +91,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
       for (final d in saved) { discovery.restoreDevice(d); }
       _lastInventorySnapshot = jsonEncode(discovery.devices.map((d) => d.toJson()).toList());
       setState(() { interfaces = found; interfaceName = found.isEmpty ? null : found.first.name; historyEntries = history; loading = false; });
+      await _loadNativeInterfaceDetails(interfaceName);
     } catch (e) { if (mounted) setState(() => loading = false); _msg('Inventory load failed: $e'); }
   }
 
@@ -118,6 +120,28 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
       if (item.name == interfaceName) return item;
     }
     return null;
+  }
+
+  Future<void> _loadNativeInterfaceDetails(String? name) async {
+    if (name == null || name.isEmpty) {
+      if (mounted) setState(() => nativeInterfaceDetails = null);
+      return;
+    }
+    try {
+      final details = await const MethodChannel(
+        'com.oxita.camera_ip_search_mobile/local_network',
+      ).invokeMapMethod<String, dynamic>(
+        'getNetworkInterfaceDetails',
+        {'interfaceName': name},
+      );
+      if (mounted) setState(() => nativeInterfaceDetails = details);
+    } catch (error) {
+      if (mounted) setState(() => nativeInterfaceDetails = {
+        'available': false,
+        'error': error.toString(),
+      });
+      await diagnostics.log('warning', 'Native interface diagnostics unavailable: $error');
+    }
   }
 
   String _defaultSubnetCidr() {
@@ -443,13 +467,24 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
     _heading('Device manager','Discover, verify and configure compatible cameras'),
     const SizedBox(height:14),
     DropdownButtonFormField<String>(key:ValueKey(interfaceName),initialValue:interfaceName,isExpanded:true,decoration:const InputDecoration(labelText:'Active network interface',prefixIcon:Icon(Icons.lan_outlined)),
-      items:interfaces.map((n)=>DropdownMenuItem(value:n.name,child:Text(n.name))).toList(),onChanged:(v)=>setState(()=>interfaceName=v)),
+      items:interfaces.map((n)=>DropdownMenuItem(value:n.name,child:Text(n.name))).toList(),onChanged:(v){setState(()=>interfaceName=v);unawaited(_loadNativeInterfaceDetails(v));}),
     const SizedBox(height:8),
     Card(child: ListTile(
       dense: true,
       leading: const Icon(Icons.router_outlined, color: red),
       title: Text(activeInterface?.name ?? 'No active interface selected'),
-      subtitle: Text(_interfaceAddressSummary(activeInterface)),
+      subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(_interfaceAddressSummary(activeInterface)),
+        const SizedBox(height: 4),
+        Text(
+          nativeInterfaceDetails == null
+              ? 'Native link diagnostics loading…'
+              : nativeInterfaceDetails!['available'] == true
+                  ? 'Link: ${nativeInterfaceDetails!['isUp'] == true ? 'Up' : 'Down'} · MTU: ${nativeInterfaceDetails!['mtu'] ?? 'Not exposed by this OS'}'
+                  : 'Native link details unavailable on this platform build',
+          style: const TextStyle(color: muted, fontSize: 11),
+        ),
+      ]),
       trailing: activeInterface == null ? null : Text('IF ${activeInterface!.index}', style: const TextStyle(color: muted, fontSize: 11)),
     )),
     const SizedBox(height:14),Row(children:[
