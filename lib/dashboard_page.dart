@@ -69,7 +69,7 @@ class _DashboardPageState extends State<DashboardPage> {
   Future<void> _load() async {
     try {
       final saved = await store.load();
-      final found = await NetworkInterface.list(type: InternetAddressType.IPv4, includeLoopback: false, includeLinkLocal: false);
+      final found = await NetworkInterface.list(type: InternetAddressType.IPv4, includeLoopback: false);
       if (!mounted) return;
       for (final d in saved) { discovery.restoreDevice(d); }
       setState(() { interfaces = found; interfaceName = found.isEmpty ? null : found.first.name; loading = false; });
