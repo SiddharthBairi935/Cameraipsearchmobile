@@ -92,7 +92,7 @@ class DeviceDiscoveryService extends ChangeNotifier {
         for (final address in interface.addresses) {
           if (generation != _discoveryGeneration) { return; }
           if (address.type != InternetAddressType.IPv4 ||
-              address.isLoopback) continue;
+              address.isLoopback) { continue; }
           await _openInterface(interface, address, generation);
           if (generation != _discoveryGeneration) { _closeSockets(); return; }
         }
@@ -147,12 +147,12 @@ class DeviceDiscoveryService extends ChangeNotifier {
       try {
         _sendOnvifProbe(openedSocket);
       } catch (error) {
-        _setStatus('ONVIF multicast send unavailable on ${interface.name}: ${error}');
+        _setStatus('ONVIF multicast send unavailable on ${interface.name}: $error');
       }
       try {
         _sendProjectProbe(openedSocket, sequence);
       } catch (error) {
-        _setStatus('Oxita UDP probe unavailable on ${interface.name}: ${error}');
+        _setStatus('Oxita UDP probe unavailable on ${interface.name}: $error');
       }
     } on SocketException catch (error) {
       if (socket != null) { _sockets.remove(socket); socket.close(); }
