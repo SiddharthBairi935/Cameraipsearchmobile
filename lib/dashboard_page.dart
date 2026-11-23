@@ -51,17 +51,17 @@ class _DashboardPageState extends State<DashboardPage> {
     _load();
   }
 
-  Future<OnvifCredentials?> _credentials(String host, String realm) async {
+  Future<OnvifCredentials?> _credentials(String host, String realm, String scheme) async {
     final user = TextEditingController(), pass = TextEditingController();
     final value = await showDialog<OnvifCredentials>(context: context, builder: (context) => AlertDialog(
       title: const Text('Camera authentication'),
       content: Column(mainAxisSize: MainAxisSize.min, children: [
-        Text('Credentials requested by $host. They remain in memory for this app session only.'),
+        Text('$scheme authentication requested by $host. Credentials remain in memory for this app session only.'),
         TextField(controller: user, decoration: const InputDecoration(labelText: 'Username')),
         TextField(controller: pass, obscureText: true, decoration: const InputDecoration(labelText: 'Password')),
       ]),
       actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-        FilledButton(onPressed: () => Navigator.pop(context, OnvifCredentials(user.text, pass.text, realm: realm)), child: const Text('Continue'))],
+        FilledButton(onPressed: () => Navigator.pop(context, OnvifCredentials(user.text, pass.text, realm: realm, scheme: scheme)), child: const Text('Continue'))],
     ));
     user.dispose(); pass.dispose(); return value;
   }
