@@ -34,6 +34,24 @@ void main() {
       ), contains('same subnet'));
     });
 
+    test('rejects unspecified and limited-broadcast addresses', () {
+      expect(NetworkConfigValidator.validateStaticIpv4(
+        address: '0.0.0.0', subnetMask: '255.255.255.0',
+      ), isNotNull);
+      expect(NetworkConfigValidator.validateStaticIpv4(
+        address: '255.255.255.255', subnetMask: '255.255.255.0',
+      ), isNotNull);
+    });
+
+    test('rejects network and broadcast host addresses', () {
+      expect(NetworkConfigValidator.validateStaticIpv4(
+        address: '192.168.1.0', subnetMask: '255.255.255.0',
+      ), contains('network or broadcast'));
+      expect(NetworkConfigValidator.validateStaticIpv4(
+        address: '192.168.1.255', subnetMask: '255.255.255.0',
+      ), contains('network or broadcast'));
+    });
+
     test('allows omitted gateway and DNS', () {
       expect(NetworkConfigValidator.validateStaticIpv4(
         address: '10.0.0.12',
