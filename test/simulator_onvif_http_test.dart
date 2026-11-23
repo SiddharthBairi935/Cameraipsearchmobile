@@ -13,8 +13,12 @@ void main() {
       await request.drain<void>();
       request.response.statusCode = status;
       request.response.headers.contentType = ContentType('application', 'soap+xml', charset: 'utf-8');
-      request.response.write(payload);
-      await request.response.close();
+      try {
+        request.response.write(payload);
+        await request.response.close();
+      } on SocketException {
+        // The ONVIF client intentionally aborts an oversized response stream.
+      }
     }
   }
 
