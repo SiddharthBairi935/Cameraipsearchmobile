@@ -102,7 +102,7 @@ class OnvifDeviceService {
 
     final interfaces = responseElement.descendants
         .whereType<XmlElement>()
-        .where((e) => e.name.local == 'NetworkInterface')
+        .where((e) => e.name.local == 'NetworkInterface' || e.name.local == 'NetworkInterfaces')
         .toList();
     final summaries = <String>[];
     XmlElement? selected;
@@ -343,7 +343,7 @@ class OnvifDeviceService {
   }
 
   static bool _verifyInterfaceAddress(XmlDocument doc, String token, String address) {
-    for (final item in doc.descendants.whereType<XmlElement>().where((e) => e.name.local == 'NetworkInterface')) {
+    for (final item in doc.descendants.whereType<XmlElement>().where((e) => e.name.local == 'NetworkInterface' || e.name.local == 'NetworkInterfaces')) {
       if ((item.getAttribute('token') ?? '') != token) continue;
       final addresses = item.descendants.whereType<XmlElement>()
           .where((e) => e.name.local == 'Address' || e.name.local == 'IPv4Address')
