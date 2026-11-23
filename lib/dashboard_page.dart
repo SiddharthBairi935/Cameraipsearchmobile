@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -9,6 +10,7 @@ import 'models/camera_device.dart';
 import 'services/device_discovery_service.dart';
 import 'services/inventory_store.dart';
 import 'services/onvif_device_service.dart';
+import 'services/network_config_validator.dart';
 
 const red = Color(0xFFD43B49), canvas = Color(0xFF101216), surface = Color(0xFF191D23), muted = Color(0xFF9AA3B1);
 
@@ -39,29 +41,30 @@ class _DashboardPageState extends State<DashboardPage> {
   List<NetworkInterface> interfaces = [];
   int tab = 0;
   bool loading = true, checking = false;
-  String? interfaceName;
+  String? interfaceName, focusedDeviceKey;
   String manufacturerFilter = 'All manufacturers', statusFilter = 'All statuses';
-  String progress = '';
+  String reachabilityProgress = '', subnetProgress = '';
+  String? _lastInventorySnapshot;
 
   @override
   void initState() {
     super.initState();
     discovery = DeviceDiscoveryService(onvifService: OnvifDeviceService(requestCredentials: _credentials));
     discovery.addListener(_changed);
-    _load();
+    unawaited(_load());
   }
 
-  Future<OnvifCredentials?> _credentials(String host, String realm) async {
+  Future<OnvifCredentials?> _credentials(String host, String realm, String scheme) async {
     final user = TextEditingController(), pass = TextEditingController();
     final value = await showDialog<OnvifCredentials>(context: context, builder: (context) => AlertDialog(
       title: const Text('Camera authentication'),
       content: Column(mainAxisSize: MainAxisSize.min, children: [
-        Text('Credentials requested by $host. They remain in memory for this app session only.'),
+        Text('$scheme authentication requested by $host. Credentials remain in memory for this app session only.'),
         TextField(controller: user, decoration: const InputDecoration(labelText: 'Username')),
         TextField(controller: pass, obscureText: true, decoration: const InputDecoration(labelText: 'Password')),
       ]),
       actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-        FilledButton(onPressed: () => Navigator.pop(context, OnvifCredentials(user.text, pass.text, realm: realm)), child: const Text('Continue'))],
+        FilledButton(onPressed: () => Navigator.pop(context, OnvifCredentials(user.text, pass.text, realm: realm, scheme: scheme)), child: const Text('Continue'))],
     ));
     user.dispose(); pass.dispose(); return value;
   }
@@ -69,16 +72,64 @@ class _DashboardPageState extends State<DashboardPage> {
   Future<void> _load() async {
     try {
       final saved = await store.load();
-      final found = await NetworkInterface.list(type: InternetAddressType.IPv4, includeLoopback: false, includeLinkLocal: false);
+      final found = await NetworkInterface.list(type: InternetAddressType.IPv4, includeLoopback: false, includeLinkLocal: true);
       if (!mounted) return;
       for (final d in saved) { discovery.restoreDevice(d); }
+      _lastInventorySnapshot = jsonEncode(discovery.devices.map((d) => d.toJson()).toList());
       setState(() { interfaces = found; interfaceName = found.isEmpty ? null : found.first.name; loading = false; });
     } catch (e) { if (mounted) setState(() => loading = false); _msg('Inventory load failed: $e'); }
   }
 
-  void _changed() { if (mounted) setState(() {}); if (!loading) unawaited(store.save(discovery.devices)); }
+  void _changed() {
+    if (mounted) setState(() {});
+    if (loading) return;
+    final snapshot = jsonEncode(discovery.devices.map((d) => d.toJson()).toList());
+    if (snapshot != _lastInventorySnapshot) {
+      _lastInventorySnapshot = snapshot;
+      unawaited(store.save(discovery.devices));
+    }
+  }
   @override
-  void dispose() { discovery.removeListener(_changed); discovery.dispose(); store.close(); search.dispose(); super.dispose(); }
+  void dispose() { discovery.removeListener(_changed); discovery.dispose(); unawaited(store.close()); search.dispose(); super.dispose(); }
+  NetworkInterface? get activeInterface {
+    for (final item in interfaces) {
+      if (item.name == interfaceName) return item;
+    }
+    return null;
+  }
+
+  String _defaultSubnetCidr() {
+    final network = activeInterface;
+    if (network == null) return '';
+    for (final address in network.addresses) {
+      if (address.type != InternetAddressType.IPv4) continue;
+      try {
+        final dynamic details = address;
+        final prefix = details.prefixLength;
+        if (prefix is int && prefix >= 1 && prefix <= 30) return '${address.address}/$prefix';
+      } on NoSuchMethodError {
+        // Older Dart SDKs do not expose InterfaceAddress.prefixLength.
+      }
+    }
+    return '';
+  }
+
+  String _interfaceAddressSummary(NetworkInterface? network) {
+    if (network == null) return 'Select an active IPv4 interface';
+    return network.addresses.map((address) {
+      final fields = <String>[address.address];
+      try {
+        final dynamic details = address;
+        fields.add('/${details.prefixLength}');
+        final broadcast = details.broadcast;
+        if (broadcast is InternetAddress) fields.add('broadcast ${broadcast.address}');
+      } on NoSuchMethodError {
+        // Older supported Dart SDKs expose only the interface IP.
+      }
+      return fields.join(' ');
+    }).join(' · ');
+  }
+
   String _key(CameraDevice d) => d.macAddress.isNotEmpty ? d.macAddress : d.id;
   void _msg(String text) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text))); }
 
@@ -95,6 +146,7 @@ class _DashboardPageState extends State<DashboardPage> {
       'Online' => d.reachabilityStatus == 'Reachable',
       'Activated' => d.activationState == 'Activated',
       'Not activated' => d.activationState == 'Not activated',
+      'Unverified candidates' => d.isCandidate,
       _ => true,
     };
     return match && vendor && status;
@@ -121,15 +173,18 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   Future<void> _subnet() async {
-    final value = await _ask('Scan selected subnet','IPv4 / prefix',hint:'192.168.1.20/24');
+    if (discovery.isSubnetScanning) { discovery.cancelSubnetScan(); return; }
+    final value = await _ask('Scan selected subnet','Selected interface IPv4 / prefix',initial:_defaultSubnetCidr(),hint:'192.168.1.20/24');
     if (value == null) return;
     try {
       final p = value.split('/'), ip = InternetAddress.tryParse(p.first), prefix = p.length == 2 ? int.tryParse(p[1]) : null;
+      if (activeInterface == null) throw const FormatException('Select an active network interface first.');
       if (ip == null || ip.type != InternetAddressType.IPv4 || ip.isLoopback || ip.isMulticast || prefix == null || prefix < 1 || prefix > 30) throw const FormatException('Enter a valid IPv4 CIDR, e.g. 192.168.1.20/24.');
+      if (!activeInterface!.addresses.any((a) => a.address == ip.address)) throw const FormatException('The CIDR address must belong to the selected network interface.');
       final m = (0xffffffff << (32-prefix)) & 0xffffffff;
       final mask = InternetAddress.fromRawAddress([(m>>24)&255,(m>>16)&255,(m>>8)&255,m&255]);
-      await discovery.scanSubnet(ip,mask,onProgress:(done,total,candidates){ if(mounted)setState(()=>progress='Subnet: $done/$total · $candidates candidates'); });
-      if(mounted)setState(()=>progress='');
+      await discovery.scanSubnet(ip,mask,onProgress:(done,total,candidates){ if(mounted)setState(()=>subnetProgress='Subnet: $done/$total · $candidates candidates'); });
+      if(mounted)setState(()=>subnetProgress='');
     } on FormatException catch(e) { _msg(e.message); }
   }
 
@@ -138,8 +193,8 @@ class _DashboardPageState extends State<DashboardPage> {
     final targets = selected.isEmpty ? visible : discovery.devices.where((d)=>selected.contains(_key(d))).toList();
     if (targets.isEmpty) { _msg('Add or discover devices first.'); return; }
     setState(()=>checking=true);
-    final count = await discovery.checkReachabilityBatch(targets,onProgress:(done,total,d){if(mounted)setState(()=>progress='Reachability: $done/$total · ${d.ipAddress}');});
-    if(mounted)setState(() { checking=false; progress=''; selected.clear(); });
+    final count = await discovery.checkReachabilityBatch(targets,onProgress:(done,total,d){if(mounted)setState(()=>reachabilityProgress='Reachability: $done/$total · ${d.ipAddress}');});
+    if(mounted)setState(() { checking=false; reachabilityProgress=''; selected.clear(); });
     _msg('Checked $count device(s).');
   }
 
@@ -159,6 +214,72 @@ class _DashboardPageState extends State<DashboardPage> {
     await Share.shareXFiles([XFile(file.path)],text:'Oxita camera inventory');
   }
 
+  Future<void> _previewStaticIpv4(CameraDevice d) async {
+    if (!d.ipv4ConfigurationKnown || d.networkInterfaceToken.isEmpty) {
+      _msg('Refresh this camera first. A verified ONVIF interface token and current IPv4 details are required.');
+      return;
+    }
+    final ip = TextEditingController(text: d.ipv4Address);
+    final mask = TextEditingController(text: d.ipv4SubnetMask);
+    final gateway = TextEditingController(text: d.ipv4Gateway);
+    final values = await showDialog<List<String>>(context: context, builder: (context) => AlertDialog(
+      title: const Text('Preview static IPv4'),
+      content: Column(mainAxisSize: MainAxisSize.min, children: [
+        Text('Current camera IP: ${d.ipAddress}', style: const TextStyle(color: muted)),
+        TextField(controller: ip, decoration: const InputDecoration(labelText: 'Proposed IPv4 address')),
+        TextField(controller: mask, decoration: const InputDecoration(labelText: 'Subnet mask')),
+        TextField(controller: gateway, decoration: const InputDecoration(labelText: 'Gateway (optional)')),
+      ]),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+        FilledButton(onPressed: () => Navigator.pop(context, [ip.text, mask.text, gateway.text]), child: const Text('Validate preview')),
+      ],
+    ));
+    ip.dispose(); mask.dispose(); gateway.dispose();
+    if (values == null) return;
+    final error = NetworkConfigValidator.validateStaticIpv4(
+      address: values[0], subnetMask: values[1], gateway: values[2],
+    );
+    if (error != null) { _msg(error); return; }
+    if (!mounted) return;
+    await showDialog<void>(context: context, builder: (context) => AlertDialog(
+      title: const Text('Static IPv4 preview'),
+      content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+        _detail('Current IP', d.ipAddress),
+        _detail('Proposed IP', values[0]),
+        _detail('Subnet mask', values[1]),
+        _detail('Gateway', values[2].isEmpty ? 'Unchanged' : values[2]),
+        _detail('Interface token', d.networkInterfaceToken),
+        const SizedBox(height: 8),
+        const Text('The values passed local validation. No ONVIF request was sent and the camera has not been changed. DNS is not modified by this operation.', style: TextStyle(color: muted, fontSize: 12)),
+      ]),
+      actions: [FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Close'))],
+    ));
+  }
+
+  Future<void> _help() async {
+    await showDialog<void>(context: context, builder: (context) => AlertDialog(
+      title: const Text('Camera Device Manager help'),
+      content: const SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('Discovery', style: TextStyle(fontWeight: FontWeight.w800)),
+        Text('ONVIF WS-Discovery and Oxita Contract B run on the selected local IPv4 interface. Discovery may not find every camera on segmented networks.'),
+        SizedBox(height: 10),
+        Text('Subnet scan', style: TextStyle(fontWeight: FontWeight.w800)),
+        Text('The bounded TCP scan finds candidate hosts. An open port is reachability evidence, not proof of camera identity or ONVIF support.'),
+        SizedBox(height: 10),
+        Text('Device information', style: TextStyle(fontWeight: FontWeight.w800)),
+        Text('Refresh device info queries the camera ONVIF service. Authentication credentials are session-only.'),
+        SizedBox(height: 10),
+        Text('Network configuration', style: TextStyle(fontWeight: FontWeight.w800)),
+        Text('Static IPv4 changes require a verified ONVIF interface token. Preview validates values without sending a request. Applying may interrupt connectivity; there is no automatic rollback.'),
+        SizedBox(height: 10),
+        Text('Feature availability', style: TextStyle(fontWeight: FontWeight.w800)),
+        Text('Bulk image settings, camera activation, firmware update, reboot and NVR channels are not implemented in the desktop release candidate and remain unavailable here.'),
+      ])),
+      actions: [FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Close'))],
+    ));
+  }
+
   Future<void> _staticIp(CameraDevice d) async {
     if (!d.ipv4ConfigurationKnown || d.networkInterfaceToken.isEmpty) { _msg('No verified matching ONVIF interface token.'); return; }
     final ip=TextEditingController(text:d.ipv4Address), mask=TextEditingController(text:d.ipv4SubnetMask), gw=TextEditingController(text:d.ipv4Gateway);
@@ -175,6 +296,8 @@ class _DashboardPageState extends State<DashboardPage> {
         FilledButton(onPressed:()=>Navigator.pop(context,[ip.text,mask.text,gw.text]),child:const Text('Review'))]));
     ip.dispose();mask.dispose();gw.dispose();
     if(values==null)return;
+    final validation = NetworkConfigValidator.validateStaticIpv4(address: values[0], subnetMask: values[1], gateway: values[2]);
+    if (validation != null) { _msg(validation); return; }
     final ok=await showDialog<bool>(context:context,builder:(context)=>AlertDialog(
       title:const Text('Confirm network change'),
       content:Text('Apply ${values[0]} / ${values[1]} to ${d.ipAddress}? The app will verify the new IP before updating inventory.'),
@@ -186,6 +309,7 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   Future<void> _details(CameraDevice d) async {
+    focusedDeviceKey = _key(d);
     await showModalBottomSheet<void>(context:context,isScrollControlled:true,backgroundColor:surface,builder:(context)=>DraggableScrollableSheet(
       expand:false,initialChildSize:.88,maxChildSize:.96,builder:(context,scroll)=>ListView(controller:scroll,padding:const EdgeInsets.all(20),children:[
         Center(child:Container(width:38,height:4,decoration:BoxDecoration(color:Colors.white24,borderRadius:BorderRadius.circular(4)))),
@@ -194,16 +318,17 @@ class _DashboardPageState extends State<DashboardPage> {
         const SizedBox(height:12),
         ...[
           ['MAC',d.macAddress],['Serial number',d.serialNumber],['Hardware ID',d.hardwareId],['Firmware',d.firmwareVersion],['Activation',d.activationState],
-          ['Interface',d.interfaceName],['Sources',d.discoverySources.join(', ')],['Reachability',d.reachabilityStatus],['Checked at',d.reachabilityCheckedAt],
-          ['ONVIF endpoint',d.onvifEndpoint],['Service URL',d.deviceServiceUrl],['Capabilities',d.capabilities.join(', ')],['Network interfaces',d.networkSummary],
+          ['Interface',d.interfaceName],['Sources',d.discoverySources.join(', ')],['Last seen',d.lastSeen?.toLocal().toString() ?? ''],['Reachability',d.reachabilityStatus],['Checked at',d.reachabilityCheckedAt],
+          ['ONVIF endpoint',d.onvifEndpoint],['Service URL',d.deviceServiceUrl],['Interface token',d.networkInterfaceToken],['Capabilities',d.capabilities.join(', ')],['Network interfaces',d.networkSummary],
           ['Camera IPv4',d.ipv4Address],['Subnet mask',d.ipv4SubnetMask],['Gateway',d.ipv4Gateway],['DNS',d.ipv4DnsServer],
           ['DHCP',d.ipv4ConfigurationKnown?(d.ipv4DhcpEnabled?'Enabled':'Disabled'):'Unknown'],['Open TCP ports',d.openPorts.join(', ')],
         ].map((e)=>_detail(e[0],e[1])),
         const SizedBox(height:14),
         Wrap(spacing:8,runSpacing:8,children:[
-          OutlinedButton.icon(onPressed:(){Navigator.pop(context);discovery.refreshDeviceInfo(d);},icon:const Icon(Icons.refresh),label:const Text('Refresh info')),
-          OutlinedButton.icon(onPressed:(){Navigator.pop(context);_rename(d);},icon:const Icon(Icons.edit),label:const Text('Rename')),
-          OutlinedButton.icon(onPressed:(){Navigator.pop(context);_staticIp(d);},icon:const Icon(Icons.settings_ethernet),label:const Text('Static IPv4')),
+          OutlinedButton.icon(onPressed:(){Navigator.pop(context);unawaited(discovery.refreshDeviceInfo(d));},icon:const Icon(Icons.refresh),label:const Text('Refresh info')),
+          OutlinedButton.icon(onPressed:(){Navigator.pop(context);unawaited(_rename(d));},icon:const Icon(Icons.edit),label:const Text('Rename')),
+          OutlinedButton.icon(onPressed:d.ipv4ConfigurationKnown && d.networkInterfaceToken.isNotEmpty?(){Navigator.pop(context);unawaited(_previewStaticIpv4(d));}:null,icon:const Icon(Icons.preview_outlined),label:const Text('Preview IP')),
+          OutlinedButton.icon(onPressed:d.ipv4ConfigurationKnown && d.networkInterfaceToken.isNotEmpty?(){Navigator.pop(context);unawaited(_staticIp(d));}:null,icon:const Icon(Icons.settings_ethernet),label:const Text('Apply static IPv4')),
           OutlinedButton.icon(onPressed:()async{final u=Uri(scheme:'http',host:d.ipAddress);if(await canLaunchUrl(u))await launchUrl(u,mode:LaunchMode.externalApplication);},icon:const Icon(Icons.open_in_browser),label:const Text('Open web UI')),
         ]),
         const SizedBox(height:12),const Text('Bulk configuration, activation, firmware upgrade, reboot and NVR channels are not implemented in desktop PR #4 and remain unavailable.',style:TextStyle(color:muted,fontSize:12)),
@@ -231,7 +356,7 @@ class _DashboardPageState extends State<DashboardPage> {
           Text('${d.ipAddress} · ${d.manufacturer} · ${d.model}',maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(color:muted,fontSize:11)),
           Text('${d.isCandidate?'Unverified candidate':d.reachabilityStatus} · ${d.discoverySources.join(', ')}',maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(color:muted,fontSize:10)),
         ])),
-        IconButton(onPressed:()=>_rename(d),icon:const Icon(Icons.edit_outlined,size:18)),const Icon(Icons.chevron_right,color:muted),
+        IconButton(onPressed:()=>unawaited(_rename(d)),icon:const Icon(Icons.edit_outlined,size:18)),const Icon(Icons.chevron_right,color:muted),
       ]))));
   }
 
@@ -244,14 +369,27 @@ class _DashboardPageState extends State<DashboardPage> {
     const SizedBox(height:14),
     DropdownButtonFormField<String>(value:interfaceName,isExpanded:true,decoration:const InputDecoration(labelText:'Active network interface',prefixIcon:Icon(Icons.lan_outlined)),
       items:interfaces.map((n)=>DropdownMenuItem(value:n.name,child:Text(n.name))).toList(),onChanged:(v)=>setState(()=>interfaceName=v)),
+    const SizedBox(height:8),
+    Card(child: ListTile(
+      dense: true,
+      leading: const Icon(Icons.router_outlined, color: red),
+      title: Text(activeInterface?.name ?? 'No active interface selected'),
+      subtitle: Text(_interfaceAddressSummary(activeInterface)),
+      trailing: activeInterface == null ? null : Text('IF ${activeInterface!.index}', style: const TextStyle(color: muted, fontSize: 11)),
+    )),
     const SizedBox(height:14),Row(children:[
       _metric('DISCOVERED','${discovery.devices.length}',Icons.devices),
       _metric('REACHABLE','${discovery.devices.where((d)=>d.reachabilityStatus=='Reachable').length}',Icons.wifi),
       _metric('NEEDS REVIEW','${discovery.devices.where((d)=>d.isCandidate).length}',Icons.search),
     ]),
+    const SizedBox(height:8),Row(children:[
+      _metric('ONVIF VERIFIED','${discovery.devices.where((d)=>d.discoverySources.contains('ONVIF GetDeviceInformation')).length}',Icons.verified_user_outlined),
+      _metric('OXITA DEVICES','${discovery.devices.where((d)=>d.manufacturer.toLowerCase()=='oxita').length}',Icons.camera_alt_outlined),
+    ]),
     const SizedBox(height:14),Card(child:ListTile(leading:Icon(discovery.isScanning?Icons.radar:Icons.wifi_tethering,color:const Color(0xFF74C69D)),
       title:Text(discovery.isScanning?'Discovery in progress':'Network status'),subtitle:Text(discovery.status))),
-    if(progress.isNotEmpty)Padding(padding:const EdgeInsets.all(8),child:Text(progress,style:const TextStyle(color:muted))),
+    if(reachabilityProgress.isNotEmpty)Padding(padding:const EdgeInsets.all(8),child:Text(reachabilityProgress,style:const TextStyle(color:muted))),
+    if(subnetProgress.isNotEmpty)Padding(padding:const EdgeInsets.all(8),child:Text(subnetProgress,style:const TextStyle(color:muted))),
     const SizedBox(height:16),_heading('Recently discovered','Saved local inventory'),
     if(loading)const Center(child:CircularProgressIndicator()) else if(discovery.devices.isEmpty)const Padding(padding:EdgeInsets.all(30),child:Text('No cameras discovered yet. Connect to the camera network and start discovery.',textAlign:TextAlign.center))
     else ...discovery.devices.take(6).map(_deviceCard),
@@ -266,7 +404,7 @@ class _DashboardPageState extends State<DashboardPage> {
         Expanded(child:DropdownButtonFormField<String>(value:manufacturerFilter,isExpanded:true,decoration:const InputDecoration(labelText:'Manufacturer'),
           items:const ['All manufacturers','ONVIF devices','Oxita devices','Other / unknown'].map((v)=>DropdownMenuItem(value:v,child:Text(v,overflow:TextOverflow.ellipsis))).toList(),onChanged:(v)=>setState(()=>manufacturerFilter=v??'All manufacturers'))),
         const SizedBox(width:8),Expanded(child:DropdownButtonFormField<String>(value:statusFilter,isExpanded:true,decoration:const InputDecoration(labelText:'Status'),
-          items:const ['All statuses','Online','Activated','Not activated'].map((v)=>DropdownMenuItem(value:v,child:Text(v,overflow:TextOverflow.ellipsis))).toList(),onChanged:(v)=>setState(()=>statusFilter=v??'All statuses'))),
+          items:const ['All statuses','Online','Activated','Not activated','Unverified candidates'].map((v)=>DropdownMenuItem(value:v,child:Text(v,overflow:TextOverflow.ellipsis))).toList(),onChanged:(v)=>setState(()=>statusFilter=v??'All statuses'))),
       ]),
       Row(children:[TextButton(onPressed:()=>setState(()=>selected.addAll(visible.map(_key))),child:const Text('Select all')),
         TextButton(onPressed:()=>setState(selected.clear),child:const Text('Clear')),const Spacer(),Text('${selected.length} selected',style:const TextStyle(color:muted,fontSize:12))]),
@@ -276,11 +414,11 @@ class _DashboardPageState extends State<DashboardPage> {
 
   Widget _tools()=>ListView(padding:const EdgeInsets.all(18),children:[
     _heading('Network tools','Installer and field-technician workflows'),
-    _tool(Icons.radar,'ONVIF + Oxita discovery','Discover devices on selected IPv4 interface.',_discover),
-    _tool(Icons.lan,'Bounded subnet scan','Probe up to 256 IPv4 hosts; TCP responders remain unverified candidates.',_subnet),
-    _tool(Icons.network_check,checking?'Cancel reachability checks':'Check reachability','Checks selected devices or all visible devices when none selected.',_reachability),
-    _tool(Icons.add_link,'Add device manually','Add a known camera IPv4 address.',_manual),
-    _tool(Icons.file_download,'Export inventory CSV','Share filtered inventory with device, network and capability fields.',_export),
+    _tool(Icons.radar,'ONVIF + Oxita discovery','Discover devices on selected IPv4 interface.',()=>unawaited(_discover())),
+    _tool(Icons.lan,discovery.isSubnetScanning?'Cancel subnet scan':'Bounded subnet scan','Probe up to 256 IPv4 hosts; TCP responders remain unverified candidates. $subnetProgress',()=>unawaited(_subnet())),
+    _tool(Icons.network_check,checking?'Cancel reachability checks':'Check reachability','Checks selected devices or all visible devices when none selected.',()=>unawaited(_reachability())),
+    _tool(Icons.add_link,'Add device manually','Add a known camera IPv4 address.',()=>unawaited(_manual())),
+    _tool(Icons.file_download,'Export inventory CSV','Share filtered inventory with device, network and capability fields.',()=>unawaited(_export())),
     const SizedBox(height:14),_heading('Feature availability','Unimplemented desktop features stay unavailable'),
     _cap('ONVIF discovery and enrichment','Available when supported',true),
     _cap('TCP reachability and bounded scan','Available',true),
@@ -294,16 +432,101 @@ class _DashboardPageState extends State<DashboardPage> {
   Widget _tool(IconData icon,String title,String subtitle,VoidCallback action)=>Card(child:ListTile(leading:Icon(icon,color:red),title:Text(title),subtitle:Text(subtitle),trailing:const Icon(Icons.chevron_right),onTap:action));
   Widget _cap(String title,String subtitle,bool ok)=>Card(child:ListTile(dense:true,title:Text(title),subtitle:Text(subtitle),trailing:Icon(ok?Icons.check_circle_outline:Icons.lock_outline,color:ok?const Color(0xFF74C69D):muted)));
 
+  CameraDevice? get _focusedDevice {
+    for (final device in discovery.devices) {
+      if (_key(device) == focusedDeviceKey) return device;
+    }
+    return null;
+  }
+
+  Widget _maintenance() {
+    final device = _focusedDevice;
+    if (device == null) {
+      return ListView(padding: const EdgeInsets.all(18), children: [
+        _heading('Maintenance', 'Camera actions and network configuration'),
+        const SizedBox(height: 14),
+        const Card(child: Padding(padding: EdgeInsets.all(20), child: Text(
+          'Select a camera from the Devices page and open its details first. The selected camera will appear here for maintenance actions.',
+          style: TextStyle(color: muted, height: 1.45),
+        ))),
+        _cap('Static IPv4 configuration', 'Requires a refreshed ONVIF interface profile', false),
+        _cap('Firmware update / reboot', 'Not implemented in desktop PR #4', false),
+      ]);
+    }
+    final canConfigure = device.ipv4ConfigurationKnown && device.networkInterfaceToken.isNotEmpty;
+    return ListView(padding: const EdgeInsets.all(18), children: [
+      _heading('Maintenance', 'Actions for the selected camera'),
+      const SizedBox(height: 14),
+      Card(child: ListTile(
+        leading: const Icon(Icons.videocam, color: red),
+        title: Text(device.userLabel.isEmpty ? device.ipAddress : device.userLabel),
+        subtitle: Text('${device.ipAddress} · ${device.manufacturer} · ${device.model}'),
+        trailing: Text(device.reachabilityStatus, style: const TextStyle(color: muted, fontSize: 11)),
+      )),
+      const SizedBox(height: 14),
+      _heading('Device actions', 'Refresh camera information or open its web interface'),
+      const SizedBox(height: 8),
+      Row(children: [
+        Expanded(child: OutlinedButton.icon(
+          onPressed: () => unawaited(discovery.refreshDeviceInfo(device)),
+          icon: const Icon(Icons.refresh), label: const Text('Refresh info'),
+        )),
+        const SizedBox(width: 8),
+        Expanded(child: OutlinedButton.icon(
+          onPressed: () async {
+            final uri = Uri(scheme: 'http', host: device.ipAddress);
+            final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+            if (!launched) _msg('Could not open the camera web interface.');
+          },
+          icon: const Icon(Icons.open_in_browser), label: const Text('Open web UI'),
+        )),
+      ]),
+      const SizedBox(height: 20),
+      _heading('IPv4 network configuration', 'Camera-side settings reported by ONVIF'),
+      const SizedBox(height: 8),
+      _detail('Current IP', device.ipv4Address),
+      _detail('Subnet mask', device.ipv4SubnetMask),
+      _detail('Gateway', device.ipv4Gateway),
+      _detail('DNS', device.ipv4DnsServer),
+      _detail('DHCP', device.ipv4ConfigurationKnown ? (device.ipv4DhcpEnabled ? 'Enabled' : 'Disabled') : 'Unknown'),
+      _detail('Interface token', device.networkInterfaceToken),
+      const SizedBox(height: 10),
+      Row(children: [
+        Expanded(child: OutlinedButton(
+          onPressed: canConfigure ? () => unawaited(_previewStaticIpv4(device)) : null,
+          child: const Text('Preview IP'),
+        )),
+        const SizedBox(width: 8),
+        Expanded(child: FilledButton(
+          onPressed: canConfigure ? () => unawaited(_staticIp(device)) : null,
+          child: const Text('Apply static IPv4'),
+        )),
+      ]),
+      const SizedBox(height: 20),
+      _heading('Firmware status', 'Read-only information from the camera'),
+      const SizedBox(height: 8),
+      _detail('Reported firmware', device.firmwareVersion),
+      const Card(child: ListTile(
+        leading: Icon(Icons.lock_outline, color: muted),
+        title: Text('Firmware update unavailable'),
+        subtitle: Text('No verified firmware upload, signature validation or recovery workflow is implemented in desktop PR #4.'),
+      )),
+      const SizedBox(height: 8),
+      _cap('Reboot / factory reset', 'Not implemented', false),
+      _cap('DHCP / DNS write configuration', 'Not implemented', false),
+    ]);
+  }
+
   Widget _settings()=>FutureBuilder<String>(future:store.databasePath,builder:(context,s)=>ListView(padding:const EdgeInsets.all(18),children:[
     _heading('Application settings','Local inventory and platform information'),
     Card(child:Padding(padding:const EdgeInsets.all(14),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
       const Text('LOCAL SQLITE DATABASE',style:TextStyle(color:muted,fontSize:10,fontWeight:FontWeight.w800)),
       const SizedBox(height:8),SelectableText(s.data??'Loading database path…'),
-      TextButton.icon(onPressed:s.hasData?(){Clipboard.setData(ClipboardData(text:s.data!));_msg('Database location copied.');}:null,icon:const Icon(Icons.copy),label:const Text('Copy location')),
+      TextButton.icon(onPressed:s.hasData?(){unawaited(Clipboard.setData(ClipboardData(text:s.data!)));_msg('Database location copied.');}:null,icon:const Icon(Icons.copy),label:const Text('Copy location')),
     ]))),
     _detail('Platform',Platform.operatingSystem),_detail('Active interface',interfaceName??'Not selected'),
     _detail('Saved devices','${discovery.devices.length}'),_detail('Version','0.2.0'),
-    _tool(Icons.file_download,'Export inventory','Share the current inventory as CSV.',_export),
+    _tool(Icons.file_download,'Export inventory','Share the current inventory as CSV.',()=>unawaited(_export())),
     const SizedBox(height:12),const Text('iOS multicast/broadcast requires Apple multicast entitlement and physical-device validation. Android local-network permissions are handled by the native bootstrap runner.',style:TextStyle(color:muted,fontSize:12)),
   ]));
 
@@ -315,13 +538,15 @@ class _DashboardPageState extends State<DashboardPage> {
         Text('OXITA',style:TextStyle(fontSize:16,fontWeight:FontWeight.w900,letterSpacing:1.2)),
         Text('CAMERA DEVICE MANAGER',style:TextStyle(fontSize:9,color:muted,letterSpacing:1)),
       ]),
-    ]),actions:[IconButton(onPressed:_manual,icon:const Icon(Icons.add_circle_outline),tooltip:'Add device'),IconButton(onPressed:_export,icon:const Icon(Icons.file_download),tooltip:'Export CSV')]),
-    body:SafeArea(child:IndexedStack(index:tab,children:[_overview(),_devices(),_tools(),_settings()])),
-    floatingActionButton:tab<2?FloatingActionButton.extended(onPressed:_discover,backgroundColor:red,foregroundColor:Colors.white,
+    ]),actions:[IconButton(onPressed:()=>unawaited(_help()),icon:const Icon(Icons.help_outline),tooltip:'Help'),IconButton(onPressed:()=>unawaited(_manual()),icon:const Icon(Icons.add_circle_outline),tooltip:'Add device'),IconButton(onPressed:()=>unawaited(_export()),icon:const Icon(Icons.file_download),tooltip:'Export CSV')]),
+    body:SafeArea(child:IndexedStack(index:tab,children:[_overview(),_devices(),_tools(),_maintenance(),_settings()])),
+    floatingActionButton:tab<2?FloatingActionButton.extended(onPressed:()=>unawaited(_discover()),backgroundColor:red,foregroundColor:Colors.white,
       icon:Icon(discovery.isScanning?Icons.stop:Icons.radar),label:Text(discovery.isScanning?'Stop discovery':'Discover devices')):null,
     bottomNavigationBar:NavigationBar(selectedIndex:tab,onDestinationSelected:(v)=>setState(()=>tab=v),destinations:const[
       NavigationDestination(icon:Icon(Icons.grid_view),label:'Overview'),NavigationDestination(icon:Icon(Icons.videocam_outlined),label:'Devices'),
-      NavigationDestination(icon:Icon(Icons.tune),label:'Tools'),NavigationDestination(icon:Icon(Icons.settings_outlined),label:'Settings'),
+      NavigationDestination(icon:Icon(Icons.tune),label:'Tools'),NavigationDestination(icon:Icon(Icons.build_outlined),label:'Maintenance'),
+      NavigationDestination(icon:Icon(Icons.settings_outlined),label:'Settings'),
     ]),
   );
 }
+
