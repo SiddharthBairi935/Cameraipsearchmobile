@@ -120,12 +120,13 @@ class DeviceDiscoveryService extends ChangeNotifier {
   Future<void> _openInterface(NetworkInterface interface, InternetAddress localAddress, int generation) async {
     RawDatagramSocket? socket;
     try {
-      socket = await RawDatagramSocket.bind(localAddress, 0, reuseAddress: true);
-      if (generation != _discoveryGeneration) { socket.close(); return; }
-      socket.broadcastEnabled = true;
-      socket.multicastHops = 1;
+      final openedSocket = await RawDatagramSocket.bind(localAddress, 0, reuseAddress: true);
+      socket = openedSocket;
+      if (generation != _discoveryGeneration) { openedSocket.close(); return; }
+      openedSocket.broadcastEnabled = true;
+      openedSocket.multicastHops = 1;
       try {
-        socket.joinMulticast(onvifGroup, interface);
+        openedSocket.joinMulticast(onvifGroup, interface);
       } on SocketException catch (error) {
         // Some mobile builds (notably iOS without Apple's multicast entitlement)
         // cannot join multicast. Keep the socket alive for any permitted unicast
@@ -133,18 +134,18 @@ class DeviceDiscoveryService extends ChangeNotifier {
         _setStatus('ONVIF multicast unavailable on ${interface.name}: ${error.message}');
       }
       final sequence = ++_sequence;
-      _sockets.add(socket);
-      socket.listen((event) {
+      _sockets.add(openedSocket);
+      openedSocket.listen((event) {
         if (event != RawSocketEvent.read) return;
         Datagram? datagram;
-        while ((datagram = socket!.receive()) != null) {
+        while ((datagram = openedSocket.receive()) != null) {
           _handleDatagram(datagram!, sequence, interface.name);
         }
       }, onError: (Object error) {
         _setStatus('Socket error on ${interface.name}: $error');
       });
-      _sendOnvifProbe(socket);
-      _sendProjectProbe(socket, sequence);
+      _sendOnvifProbe(openedSocket);
+      _sendProjectProbe(openedSocket, sequence);
     } on SocketException catch (error) {
       if (socket != null) { _sockets.remove(socket); socket.close(); }
       _setStatus('Could not bind ${interface.name}: ${error.message}');
