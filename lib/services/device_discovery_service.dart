@@ -187,9 +187,10 @@ class DeviceDiscoveryService extends ChangeNotifier {
     }
   }
 
-  CameraDevice? _parseProjectResponse(String payload, int expectedSequence,
+  CameraDevice? parseProjectResponse(String payload, int expectedSequence,
       InternetAddress sender, String interfaceName) {
     try {
+      if (utf8.encode(payload).length > 65507 || sender.type != InternetAddressType.IPv4) return null;
       final root = jsonDecode(payload);
       if (root is! Map<String, dynamic> ||
           root['magic'] != 'CAM_DISCOVER' ||
@@ -235,9 +236,9 @@ class DeviceDiscoveryService extends ChangeNotifier {
     }
   }
 
-  CameraDevice? _parseOnvifResponse(String payload, InternetAddress sender, String interfaceName) {
+  CameraDevice? parseOnvifResponse(String payload, InternetAddress sender, String interfaceName) {
     try {
-      if (payload.length > 65507) return null;
+      if (utf8.encode(payload).length > 65507 || sender.type != InternetAddressType.IPv4) return null;
       final document = XmlDocument.parse(payload);
       final probeMatches = document.descendants.where((node) => node is XmlElement && node.name.local == 'ProbeMatch');
       for (final match in probeMatches) {
