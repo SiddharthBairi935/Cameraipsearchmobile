@@ -58,7 +58,6 @@ class DiagnosticsService {
       ..writeln('Application: Oxita Camera IP Search Mobile 0.3.0')
       ..writeln('OS: ${Platform.operatingSystem} ${Platform.operatingSystemVersion}')
       ..writeln('Dart: ${Platform.version}')
-      ..writeln('Architecture: ${Platform.version.split(' ').first}')
       ..writeln()
       ..writeln('PRIVACY')
       ..writeln('This bundle excludes the inventory database, camera credentials and ONVIF interface tokens.')
