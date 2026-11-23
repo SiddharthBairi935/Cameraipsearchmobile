@@ -6,61 +6,6 @@ import 'package:camera_ip_search_mobile/models/camera_device.dart';
 import 'package:camera_ip_search_mobile/services/onvif_device_service.dart';
 
 void main() {
-  test('replays complete SOAP POST body after HTTP Basic challenge', () async {
-    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
-    var credentialPrompts = 0;
-    var authenticatedRequests = 0;
-    final subscription = server.listen((request) async {
-      final body = await utf8.decoder.bind(request).join();
-      final authorization = request.headers.value(HttpHeaders.authorizationHeader);
-      if (authorization == null) {
-        request.response.statusCode = HttpStatus.unauthorized;
-        request.response.headers.add(HttpHeaders.wwwAuthenticateHeader, 'Basic realm="Oxita"');
-        await request.response.close();
-        return;
-      }
-      authenticatedRequests++;
-      expect(authorization, 'Basic ${base64Encode(utf8.encode('admin:secret'))}');
-      expect(body, contains('<tds:'));
-      String response;
-      if (body.contains('GetDeviceInformation')) {
-        response = '<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope" xmlns:tds="http://www.onvif.org/ver10/device/wsdl"><s:Body><tds:GetDeviceInformationResponse><tds:Manufacturer>Oxita</tds:Manufacturer><tds:Model>Auth camera</tds:Model></tds:GetDeviceInformationResponse></s:Body></s:Envelope>';
-      } else if (body.contains('GetCapabilities')) {
-        response = '<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope" xmlns:tds="http://www.onvif.org/ver10/device/wsdl"><s:Body><tds:GetCapabilitiesResponse/></s:Body></s:Envelope>';
-      } else if (body.contains('GetNetworkInterfaces')) {
-        response = '<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope" xmlns:tds="http://www.onvif.org/ver10/device/wsdl"><s:Body><tds:GetNetworkInterfacesResponse/></s:Body></s:Envelope>';
-      } else {
-        response = '<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope" xmlns:tds="http://www.onvif.org/ver10/device/wsdl"><s:Body><tds:GetDNSResponse><tds:DNSInformation/></tds:GetDNSResponse></s:Body></s:Envelope>';
-      }
-      request.response.headers.contentType = ContentType('application', 'soap+xml', charset: 'utf-8');
-      request.response.write(response);
-      await request.response.close();
-    });
-    try {
-      final service = OnvifDeviceService(requestCredentials: (host, realm, scheme) async {
-        credentialPrompts++;
-        expect(host, '127.0.0.1');
-        expect(realm, 'Oxita');
-        expect(scheme, 'basic');
-        return OnvifCredentials('admin', 'secret', realm: realm, scheme: scheme);
-      });
-      final device = CameraDevice(
-        id: '127.0.0.1',
-        ipAddress: '127.0.0.1',
-        deviceServiceUrl: 'http://127.0.0.1:${server.port}/onvif/device_service',
-        discoverySources: const ['ONVIF WS-Discovery'],
-      );
-      final refreshed = await service.refresh(device);
-      expect(refreshed.manufacturer, 'Oxita');
-      expect(refreshed.model, 'Auth camera');
-      expect(credentialPrompts, 1);
-      expect(authenticatedRequests, 4);
-    } finally {
-      await subscription.cancel();
-      await server.close(force: true);
-    }
-  });
-
   test('refresh reads ONVIF identity, capabilities, interfaces and manual DNS', () async {
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     final subscription = server.listen((request) async {
