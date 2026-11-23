@@ -315,15 +315,6 @@ class OnvifDeviceService {
   static String _text(XmlNode root, String localName) =>
       _firstElement(root, localName)?.innerText.trim() ?? '';
 
-  static String _firstText(XmlNode root, Set<String> names) {
-    for (final element in root.descendants.whereType<XmlElement>()) {
-      if (names.contains(element.name.local) && element.innerText.trim().isNotEmpty) {
-        return element.innerText.trim();
-      }
-    }
-    return '';
-  }
-
   static List<String> _append(List<String> values, String value) =>
       values.contains(value) ? values : [...values, value];
 
