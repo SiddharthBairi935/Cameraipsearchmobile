@@ -473,7 +473,8 @@ class _DashboardPageState extends State<DashboardPage> {
         Expanded(child: OutlinedButton.icon(
           onPressed: () async {
             final uri = Uri(scheme: 'http', host: device.ipAddress);
-            if (await canLaunchUrl(uri)) await launchUrl(uri, mode: LaunchMode.externalApplication);
+            final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+            if (!launched) _msg('Could not open the camera web interface.');
           },
           icon: const Icon(Icons.open_in_browser), label: const Text('Open web UI'),
         )),
