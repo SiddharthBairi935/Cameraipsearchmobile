@@ -48,7 +48,7 @@ class NetworkConfigValidator {
         parsed.isLoopback ||
         parsed.isMulticast ||
         parsed.address == '0.0.0.0' ||
-        parsed.address == '255.255.255.255') return null;
+        parsed.address == '255.255.255.255') { return null; }
     return parsed.rawAddress;
   }
 
