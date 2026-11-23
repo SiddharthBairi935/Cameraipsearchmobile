@@ -97,6 +97,22 @@ class _DashboardPageState extends State<DashboardPage> {
     return null;
   }
 
+  String _interfaceAddressSummary(NetworkInterface? network) {
+    if (network == null) return 'Select an active IPv4 interface';
+    return network.addresses.map((address) {
+      final fields = <String>[address.address];
+      try {
+        final dynamic details = address;
+        fields.add('/${details.prefixLength}');
+        final broadcast = details.broadcast;
+        if (broadcast is InternetAddress) fields.add('broadcast ${broadcast.address}');
+      } on NoSuchMethodError {
+        // Older supported Dart SDKs expose only the interface IP.
+      }
+      return fields.join(' ');
+    }).join(' · ');
+  }
+
   String _key(CameraDevice d) => d.macAddress.isNotEmpty ? d.macAddress : d.id;
   void _msg(String text) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text))); }
 
@@ -113,6 +129,7 @@ class _DashboardPageState extends State<DashboardPage> {
       'Online' => d.reachabilityStatus == 'Reachable',
       'Activated' => d.activationState == 'Activated',
       'Not activated' => d.activationState == 'Not activated',
+      'Unverified candidates' => d.isCandidate,
       _ => true,
     };
     return match && vendor && status;
@@ -222,7 +239,7 @@ class _DashboardPageState extends State<DashboardPage> {
         Wrap(spacing:8,runSpacing:8,children:[
           OutlinedButton.icon(onPressed:(){Navigator.pop(context);unawaited(discovery.refreshDeviceInfo(d));},icon:const Icon(Icons.refresh),label:const Text('Refresh info')),
           OutlinedButton.icon(onPressed:(){Navigator.pop(context);unawaited(_rename(d));},icon:const Icon(Icons.edit),label:const Text('Rename')),
-          OutlinedButton.icon(onPressed:(){Navigator.pop(context);unawaited(_staticIp(d));},icon:const Icon(Icons.settings_ethernet),label:const Text('Static IPv4')),
+          OutlinedButton.icon(onPressed:d.ipv4ConfigurationKnown && d.networkInterfaceToken.isNotEmpty?(){Navigator.pop(context);unawaited(_staticIp(d));}:null,icon:const Icon(Icons.settings_ethernet),label:const Text('Static IPv4')),
           OutlinedButton.icon(onPressed:()async{final u=Uri(scheme:'http',host:d.ipAddress);if(await canLaunchUrl(u))await launchUrl(u,mode:LaunchMode.externalApplication);},icon:const Icon(Icons.open_in_browser),label:const Text('Open web UI')),
         ]),
         const SizedBox(height:12),const Text('Bulk configuration, activation, firmware upgrade, reboot and NVR channels are not implemented in desktop PR #4 and remain unavailable.',style:TextStyle(color:muted,fontSize:12)),
@@ -268,7 +285,7 @@ class _DashboardPageState extends State<DashboardPage> {
       dense: true,
       leading: const Icon(Icons.router_outlined, color: red),
       title: Text(activeInterface?.name ?? 'No active interface selected'),
-      subtitle: Text(activeInterface?.addresses.map((a) => a.address).join(' · ') ?? 'Select an active IPv4 interface'),
+      subtitle: Text(_interfaceAddressSummary(activeInterface)),
       trailing: activeInterface == null ? null : Text('IF ${activeInterface!.index}', style: const TextStyle(color: muted, fontSize: 11)),
     )),
     const SizedBox(height:14),Row(children:[
@@ -298,7 +315,7 @@ class _DashboardPageState extends State<DashboardPage> {
         Expanded(child:DropdownButtonFormField<String>(value:manufacturerFilter,isExpanded:true,decoration:const InputDecoration(labelText:'Manufacturer'),
           items:const ['All manufacturers','ONVIF devices','Oxita devices','Other / unknown'].map((v)=>DropdownMenuItem(value:v,child:Text(v,overflow:TextOverflow.ellipsis))).toList(),onChanged:(v)=>setState(()=>manufacturerFilter=v??'All manufacturers'))),
         const SizedBox(width:8),Expanded(child:DropdownButtonFormField<String>(value:statusFilter,isExpanded:true,decoration:const InputDecoration(labelText:'Status'),
-          items:const ['All statuses','Online','Activated','Not activated'].map((v)=>DropdownMenuItem(value:v,child:Text(v,overflow:TextOverflow.ellipsis))).toList(),onChanged:(v)=>setState(()=>statusFilter=v??'All statuses'))),
+          items:const ['All statuses','Online','Activated','Not activated','Unverified candidates'].map((v)=>DropdownMenuItem(value:v,child:Text(v,overflow:TextOverflow.ellipsis))).toList(),onChanged:(v)=>setState(()=>statusFilter=v??'All statuses'))),
       ]),
       Row(children:[TextButton(onPressed:()=>setState(()=>selected.addAll(visible.map(_key))),child:const Text('Select all')),
         TextButton(onPressed:()=>setState(selected.clear),child:const Text('Clear')),const Spacer(),Text('${selected.length} selected',style:const TextStyle(color:muted,fontSize:12))]),
