@@ -50,6 +50,7 @@ class InventoryStore {
   Future<void> save(List<CameraDevice> devices) async {
     final db = await _db;
     await db.transaction((txn) async {
+      await txn.delete('devices');
       final batch = txn.batch();
       for (final device in devices) {
         final key = device.macAddress.isNotEmpty ? device.macAddress : device.id;
