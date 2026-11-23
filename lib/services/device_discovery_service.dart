@@ -83,6 +83,7 @@ class DeviceDiscoveryService extends ChangeNotifier {
         includeLoopback: false,
         includeLinkLocal: false,
       );
+      await _acquireMulticastLock();
       var interfaceCount = 0;
       for (final interface in interfaces) {
         if (interfaceName.isNotEmpty && interface.name != interfaceName) continue;
@@ -95,11 +96,12 @@ class DeviceDiscoveryService extends ChangeNotifier {
         }
       }
       if (_sockets.isEmpty) {
+        _closeSockets();
         _isScanning = false;
         _setStatus('No usable IPv4 socket could be opened on the active interfaces.');
         return;
       }
-      await _acquireMulticastLock();
+      interfaceCount = _sockets.length;
       _setStatus('Sending ONVIF and project-camera probes on $interfaceCount interface address(es)…');
       _timeout = Timer(const Duration(seconds: 6), () { if (generation == _discoveryGeneration) _finishDiscovery(); });
     } on SocketException catch (error) {
@@ -117,6 +119,7 @@ class DeviceDiscoveryService extends ChangeNotifier {
       socket = await RawDatagramSocket.bind(localAddress, 0, reuseAddress: true);
       socket.broadcastEnabled = true;
       socket.multicastHops = 1;
+      socket.multicastInterface = localAddress;
       try {
         socket.joinMulticast(onvifGroup, interface);
       } on SocketException catch (error) {
@@ -611,6 +614,7 @@ class DeviceDiscoveryService extends ChangeNotifier {
   @override
   void dispose() {
     _timeout?.cancel();
+    _onvif.cancelActive();
     _closeSockets();
     super.dispose();
   }
