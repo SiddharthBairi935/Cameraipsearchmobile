@@ -480,7 +480,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
           nativeInterfaceDetails == null
               ? 'Native link diagnostics loading…'
               : nativeInterfaceDetails!['available'] == true
-                  ? 'Link: ${nativeInterfaceDetails!['isUp'] == true ? 'Up' : 'Down'} · MTU: ${nativeInterfaceDetails!['mtu'] ?? 'Not exposed by this OS'}'
+                  ? "Link: ${nativeInterfaceDetails!['isUp'] == true ? 'Up' : 'Down'} · MTU: ${nativeInterfaceDetails!['mtu'] ?? 'Not exposed by this OS'}"
                   : 'Native link details unavailable on this platform build',
           style: const TextStyle(color: muted, fontSize: 11),
         ),
