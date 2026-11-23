@@ -35,6 +35,15 @@ class DeviceDiscoveryService extends ChangeNotifier {
   bool get isScanning => _isScanning;
   String get status => _status;
 
+  void updateDevice(CameraDevice device) {
+    final matched = _matchingKey(device);
+    final key = matched ?? (device.macAddress.isNotEmpty ? device.macAddress : device.id);
+    if (key.isEmpty) return;
+    if (matched != null && matched != key) _devices.remove(matched);
+    _devices[key] = device;
+    notifyListeners();
+  }
+
   void restoreDevice(CameraDevice device) {
     final key = device.macAddress.isNotEmpty ? device.macAddress : device.ipAddress;
     if (key.isNotEmpty) _devices[key] = device;
@@ -402,7 +411,7 @@ class DeviceDiscoveryService extends ChangeNotifier {
 
   Future<void> addManualDevice(String address) async {
     final parsed = InternetAddress.tryParse(address.trim());
-    if (parsed == null || parsed.type != InternetAddressType.IPv4 || parsed.isLoopback || parsed.isMulticast) {
+    if (parsed == null || parsed.type != InternetAddressType.IPv4 || parsed.isLoopback || parsed.isMulticast || parsed.isLinkLocal || parsed.address == '0.0.0.0' || parsed.address == '255.255.255.255') {
       throw const FormatException('Enter a valid unicast IPv4 address.');
     }
     _merge(CameraDevice(
