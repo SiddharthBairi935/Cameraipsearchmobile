@@ -42,7 +42,7 @@ class _DashboardPageState extends State<DashboardPage> {
   bool loading = true, checking = false;
   String? interfaceName;
   String manufacturerFilter = 'All manufacturers', statusFilter = 'All statuses';
-  String progress = '';
+  String reachabilityProgress = '', subnetProgress = '';
   String? _lastInventorySnapshot;
 
   @override
@@ -147,8 +147,8 @@ class _DashboardPageState extends State<DashboardPage> {
       if (ip == null || ip.type != InternetAddressType.IPv4 || ip.isLoopback || ip.isMulticast || prefix == null || prefix < 1 || prefix > 30) throw const FormatException('Enter a valid IPv4 CIDR, e.g. 192.168.1.20/24.');
       final m = (0xffffffff << (32-prefix)) & 0xffffffff;
       final mask = InternetAddress.fromRawAddress([(m>>24)&255,(m>>16)&255,(m>>8)&255,m&255]);
-      await discovery.scanSubnet(ip,mask,onProgress:(done,total,candidates){ if(mounted)setState(()=>progress='Subnet: $done/$total · $candidates candidates'); });
-      if(mounted)setState(()=>progress='');
+      await discovery.scanSubnet(ip,mask,onProgress:(done,total,candidates){ if(mounted)setState(()=>subnetProgress='Subnet: $done/$total · $candidates candidates'); });
+      if(mounted)setState(()=>subnetProgress='');
     } on FormatException catch(e) { _msg(e.message); }
   }
 
@@ -157,8 +157,8 @@ class _DashboardPageState extends State<DashboardPage> {
     final targets = selected.isEmpty ? visible : discovery.devices.where((d)=>selected.contains(_key(d))).toList();
     if (targets.isEmpty) { _msg('Add or discover devices first.'); return; }
     setState(()=>checking=true);
-    final count = await discovery.checkReachabilityBatch(targets,onProgress:(done,total,d){if(mounted)setState(()=>progress='Reachability: $done/$total · ${d.ipAddress}');});
-    if(mounted)setState(() { checking=false; progress=''; selected.clear(); });
+    final count = await discovery.checkReachabilityBatch(targets,onProgress:(done,total,d){if(mounted)setState(()=>reachabilityProgress='Reachability: $done/$total · ${d.ipAddress}');});
+    if(mounted)setState(() { checking=false; reachabilityProgress=''; selected.clear(); });
     _msg('Checked $count device(s).');
   }
 
@@ -282,7 +282,8 @@ class _DashboardPageState extends State<DashboardPage> {
     ]),
     const SizedBox(height:14),Card(child:ListTile(leading:Icon(discovery.isScanning?Icons.radar:Icons.wifi_tethering,color:const Color(0xFF74C69D)),
       title:Text(discovery.isScanning?'Discovery in progress':'Network status'),subtitle:Text(discovery.status))),
-    if(progress.isNotEmpty)Padding(padding:const EdgeInsets.all(8),child:Text(progress,style:const TextStyle(color:muted))),
+    if(reachabilityProgress.isNotEmpty)Padding(padding:const EdgeInsets.all(8),child:Text(reachabilityProgress,style:const TextStyle(color:muted))),
+    if(subnetProgress.isNotEmpty)Padding(padding:const EdgeInsets.all(8),child:Text(subnetProgress,style:const TextStyle(color:muted))),
     const SizedBox(height:16),_heading('Recently discovered','Saved local inventory'),
     if(loading)const Center(child:CircularProgressIndicator()) else if(discovery.devices.isEmpty)const Padding(padding:EdgeInsets.all(30),child:Text('No cameras discovered yet. Connect to the camera network and start discovery.',textAlign:TextAlign.center))
     else ...discovery.devices.take(6).map(_deviceCard),
@@ -308,7 +309,7 @@ class _DashboardPageState extends State<DashboardPage> {
   Widget _tools()=>ListView(padding:const EdgeInsets.all(18),children:[
     _heading('Network tools','Installer and field-technician workflows'),
     _tool(Icons.radar,'ONVIF + Oxita discovery','Discover devices on selected IPv4 interface.',()=>unawaited(_discover())),
-    _tool(Icons.lan,discovery.isSubnetScanning?'Cancel subnet scan':'Bounded subnet scan','Probe up to 256 IPv4 hosts; TCP responders remain unverified candidates.',()=>unawaited(_subnet())),
+    _tool(Icons.lan,discovery.isSubnetScanning?'Cancel subnet scan':'Bounded subnet scan','Probe up to 256 IPv4 hosts; TCP responders remain unverified candidates. $subnetProgress',()=>unawaited(_subnet())),
     _tool(Icons.network_check,checking?'Cancel reachability checks':'Check reachability','Checks selected devices or all visible devices when none selected.',()=>unawaited(_reachability())),
     _tool(Icons.add_link,'Add device manually','Add a known camera IPv4 address.',()=>unawaited(_manual())),
     _tool(Icons.file_download,'Export inventory CSV','Share filtered inventory with device, network and capability fields.',()=>unawaited(_export())),
