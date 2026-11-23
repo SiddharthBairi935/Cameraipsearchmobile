@@ -121,6 +121,7 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   Future<void> _subnet() async {
+    if (discovery.isSubnetScanning) { discovery.cancelSubnetScan(); return; }
     final value = await _ask('Scan selected subnet','IPv4 / prefix',hint:'192.168.1.20/24');
     if (value == null) return;
     try {
@@ -277,7 +278,7 @@ class _DashboardPageState extends State<DashboardPage> {
   Widget _tools()=>ListView(padding:const EdgeInsets.all(18),children:[
     _heading('Network tools','Installer and field-technician workflows'),
     _tool(Icons.radar,'ONVIF + Oxita discovery','Discover devices on selected IPv4 interface.',_discover),
-    _tool(Icons.lan,'Bounded subnet scan','Probe up to 256 IPv4 hosts; TCP responders remain unverified candidates.',_subnet),
+    _tool(Icons.lan,discovery.isSubnetScanning?'Cancel subnet scan':'Bounded subnet scan','Probe up to 256 IPv4 hosts; TCP responders remain unverified candidates.',_subnet),
     _tool(Icons.network_check,checking?'Cancel reachability checks':'Check reachability','Checks selected devices or all visible devices when none selected.',_reachability),
     _tool(Icons.add_link,'Add device manually','Add a known camera IPv4 address.',_manual),
     _tool(Icons.file_download,'Export inventory CSV','Share filtered inventory with device, network and capability fields.',_export),
