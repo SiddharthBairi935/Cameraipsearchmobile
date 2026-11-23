@@ -48,7 +48,7 @@ class _DashboardPageState extends State<DashboardPage> {
     super.initState();
     discovery = DeviceDiscoveryService(onvifService: OnvifDeviceService(requestCredentials: _credentials));
     discovery.addListener(_changed);
-    _load();
+    unawaited(_load());
   }
 
   Future<OnvifCredentials?> _credentials(String host, String realm, String scheme) async {
@@ -209,9 +209,9 @@ class _DashboardPageState extends State<DashboardPage> {
         ].map((e)=>_detail(e[0],e[1])),
         const SizedBox(height:14),
         Wrap(spacing:8,runSpacing:8,children:[
-          OutlinedButton.icon(onPressed:(){Navigator.pop(context);discovery.refreshDeviceInfo(d);},icon:const Icon(Icons.refresh),label:const Text('Refresh info')),
-          OutlinedButton.icon(onPressed:(){Navigator.pop(context);_rename(d);},icon:const Icon(Icons.edit),label:const Text('Rename')),
-          OutlinedButton.icon(onPressed:(){Navigator.pop(context);_staticIp(d);},icon:const Icon(Icons.settings_ethernet),label:const Text('Static IPv4')),
+          OutlinedButton.icon(onPressed:(){Navigator.pop(context);unawaited(discovery.refreshDeviceInfo(d));},icon:const Icon(Icons.refresh),label:const Text('Refresh info')),
+          OutlinedButton.icon(onPressed:(){Navigator.pop(context);unawaited(_rename(d));},icon:const Icon(Icons.edit),label:const Text('Rename')),
+          OutlinedButton.icon(onPressed:(){Navigator.pop(context);unawaited(_staticIp(d));},icon:const Icon(Icons.settings_ethernet),label:const Text('Static IPv4')),
           OutlinedButton.icon(onPressed:()async{final u=Uri(scheme:'http',host:d.ipAddress);if(await canLaunchUrl(u))await launchUrl(u,mode:LaunchMode.externalApplication);},icon:const Icon(Icons.open_in_browser),label:const Text('Open web UI')),
         ]),
         const SizedBox(height:12),const Text('Bulk configuration, activation, firmware upgrade, reboot and NVR channels are not implemented in desktop PR #4 and remain unavailable.',style:TextStyle(color:muted,fontSize:12)),
@@ -315,7 +315,7 @@ class _DashboardPageState extends State<DashboardPage> {
     Card(child:Padding(padding:const EdgeInsets.all(14),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
       const Text('LOCAL SQLITE DATABASE',style:TextStyle(color:muted,fontSize:10,fontWeight:FontWeight.w800)),
       const SizedBox(height:8),SelectableText(s.data??'Loading database path…'),
-      TextButton.icon(onPressed:s.hasData?(){Clipboard.setData(ClipboardData(text:s.data!));_msg('Database location copied.');}:null,icon:const Icon(Icons.copy),label:const Text('Copy location')),
+      TextButton.icon(onPressed:s.hasData?(){unawaited(Clipboard.setData(ClipboardData(text:s.data!)));_msg('Database location copied.');}:null,icon:const Icon(Icons.copy),label:const Text('Copy location')),
     ]))),
     _detail('Platform',Platform.operatingSystem),_detail('Active interface',interfaceName??'Not selected'),
     _detail('Saved devices','${discovery.devices.length}'),_detail('Version','0.2.0'),
