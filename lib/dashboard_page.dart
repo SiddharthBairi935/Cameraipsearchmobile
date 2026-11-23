@@ -10,6 +10,7 @@ import 'models/camera_device.dart';
 import 'services/device_discovery_service.dart';
 import 'services/inventory_store.dart';
 import 'services/onvif_device_service.dart';
+import 'services/network_config_validator.dart';
 
 const red = Color(0xFFD43B49), canvas = Color(0xFF101216), surface = Color(0xFF191D23), muted = Color(0xFF9AA3B1);
 
@@ -213,6 +214,72 @@ class _DashboardPageState extends State<DashboardPage> {
     await Share.shareXFiles([XFile(file.path)],text:'Oxita camera inventory');
   }
 
+  Future<void> _previewStaticIpv4(CameraDevice d) async {
+    if (!d.ipv4ConfigurationKnown || d.networkInterfaceToken.isEmpty) {
+      _msg('Refresh this camera first. A verified ONVIF interface token and current IPv4 details are required.');
+      return;
+    }
+    final ip = TextEditingController(text: d.ipv4Address);
+    final mask = TextEditingController(text: d.ipv4SubnetMask);
+    final gateway = TextEditingController(text: d.ipv4Gateway);
+    final values = await showDialog<List<String>>(context: context, builder: (context) => AlertDialog(
+      title: const Text('Preview static IPv4'),
+      content: Column(mainAxisSize: MainAxisSize.min, children: [
+        Text('Current camera IP: ${d.ipAddress}', style: const TextStyle(color: muted)),
+        TextField(controller: ip, decoration: const InputDecoration(labelText: 'Proposed IPv4 address')),
+        TextField(controller: mask, decoration: const InputDecoration(labelText: 'Subnet mask')),
+        TextField(controller: gateway, decoration: const InputDecoration(labelText: 'Gateway (optional)')),
+      ]),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+        FilledButton(onPressed: () => Navigator.pop(context, [ip.text, mask.text, gateway.text]), child: const Text('Validate preview')),
+      ],
+    ));
+    ip.dispose(); mask.dispose(); gateway.dispose();
+    if (values == null) return;
+    final error = NetworkConfigValidator.validateStaticIpv4(
+      address: values[0], subnetMask: values[1], gateway: values[2],
+    );
+    if (error != null) { _msg(error); return; }
+    if (!mounted) return;
+    await showDialog<void>(context: context, builder: (context) => AlertDialog(
+      title: const Text('Static IPv4 preview'),
+      content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+        _detail('Current IP', d.ipAddress),
+        _detail('Proposed IP', values[0]),
+        _detail('Subnet mask', values[1]),
+        _detail('Gateway', values[2].isEmpty ? 'Unchanged' : values[2]),
+        _detail('Interface token', d.networkInterfaceToken),
+        const SizedBox(height: 8),
+        const Text('The values passed local validation. No ONVIF request was sent and the camera has not been changed. DNS is not modified by this operation.', style: TextStyle(color: muted, fontSize: 12)),
+      ]),
+      actions: [FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Close'))],
+    ));
+  }
+
+  Future<void> _help() async {
+    await showDialog<void>(context: context, builder: (context) => AlertDialog(
+      title: const Text('Camera Device Manager help'),
+      content: const SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('Discovery', style: TextStyle(fontWeight: FontWeight.w800)),
+        Text('ONVIF WS-Discovery and Oxita Contract B run on the selected local IPv4 interface. Discovery may not find every camera on segmented networks.'),
+        SizedBox(height: 10),
+        Text('Subnet scan', style: TextStyle(fontWeight: FontWeight.w800)),
+        Text('The bounded TCP scan finds candidate hosts. An open port is reachability evidence, not proof of camera identity or ONVIF support.'),
+        SizedBox(height: 10),
+        Text('Device information', style: TextStyle(fontWeight: FontWeight.w800)),
+        Text('Refresh device info queries the camera ONVIF service. Authentication credentials are session-only.'),
+        SizedBox(height: 10),
+        Text('Network configuration', style: TextStyle(fontWeight: FontWeight.w800)),
+        Text('Static IPv4 changes require a verified ONVIF interface token. Preview validates values without sending a request. Applying may interrupt connectivity; there is no automatic rollback.'),
+        SizedBox(height: 10),
+        Text('Feature availability', style: TextStyle(fontWeight: FontWeight.w800)),
+        Text('Bulk image settings, camera activation, firmware update, reboot and NVR channels are not implemented in the desktop release candidate and remain unavailable here.'),
+      ])),
+      actions: [FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Close'))],
+    ));
+  }
+
   Future<void> _staticIp(CameraDevice d) async {
     if (!d.ipv4ConfigurationKnown || d.networkInterfaceToken.isEmpty) { _msg('No verified matching ONVIF interface token.'); return; }
     final ip=TextEditingController(text:d.ipv4Address), mask=TextEditingController(text:d.ipv4SubnetMask), gw=TextEditingController(text:d.ipv4Gateway);
@@ -257,7 +324,8 @@ class _DashboardPageState extends State<DashboardPage> {
         Wrap(spacing:8,runSpacing:8,children:[
           OutlinedButton.icon(onPressed:(){Navigator.pop(context);unawaited(discovery.refreshDeviceInfo(d));},icon:const Icon(Icons.refresh),label:const Text('Refresh info')),
           OutlinedButton.icon(onPressed:(){Navigator.pop(context);unawaited(_rename(d));},icon:const Icon(Icons.edit),label:const Text('Rename')),
-          OutlinedButton.icon(onPressed:d.ipv4ConfigurationKnown && d.networkInterfaceToken.isNotEmpty?(){Navigator.pop(context);unawaited(_staticIp(d));}:null,icon:const Icon(Icons.settings_ethernet),label:const Text('Static IPv4')),
+          OutlinedButton.icon(onPressed:d.ipv4ConfigurationKnown && d.networkInterfaceToken.isNotEmpty?(){Navigator.pop(context);unawaited(_previewStaticIpv4(d));}:null,icon:const Icon(Icons.preview_outlined),label:const Text('Preview IP')),
+          OutlinedButton.icon(onPressed:d.ipv4ConfigurationKnown && d.networkInterfaceToken.isNotEmpty?(){Navigator.pop(context);unawaited(_staticIp(d));}:null,icon:const Icon(Icons.settings_ethernet),label:const Text('Apply static IPv4')),
           OutlinedButton.icon(onPressed:()async{final u=Uri(scheme:'http',host:d.ipAddress);if(await canLaunchUrl(u))await launchUrl(u,mode:LaunchMode.externalApplication);},icon:const Icon(Icons.open_in_browser),label:const Text('Open web UI')),
         ]),
         const SizedBox(height:12),const Text('Bulk configuration, activation, firmware upgrade, reboot and NVR channels are not implemented in desktop PR #4 and remain unavailable.',style:TextStyle(color:muted,fontSize:12)),
@@ -382,7 +450,7 @@ class _DashboardPageState extends State<DashboardPage> {
         Text('OXITA',style:TextStyle(fontSize:16,fontWeight:FontWeight.w900,letterSpacing:1.2)),
         Text('CAMERA DEVICE MANAGER',style:TextStyle(fontSize:9,color:muted,letterSpacing:1)),
       ]),
-    ]),actions:[IconButton(onPressed:()=>unawaited(_manual()),icon:const Icon(Icons.add_circle_outline),tooltip:'Add device'),IconButton(onPressed:()=>unawaited(_export()),icon:const Icon(Icons.file_download),tooltip:'Export CSV')]),
+    ]),actions:[IconButton(onPressed:()=>unawaited(_help()),icon:const Icon(Icons.help_outline),tooltip:'Help'),IconButton(onPressed:()=>unawaited(_manual()),icon:const Icon(Icons.add_circle_outline),tooltip:'Add device'),IconButton(onPressed:()=>unawaited(_export()),icon:const Icon(Icons.file_download),tooltip:'Export CSV')]),
     body:SafeArea(child:IndexedStack(index:tab,children:[_overview(),_devices(),_tools(),_settings()])),
     floatingActionButton:tab<2?FloatingActionButton.extended(onPressed:()=>unawaited(_discover()),backgroundColor:red,foregroundColor:Colors.white,
       icon:Icon(discovery.isScanning?Icons.stop:Icons.radar),label:Text(discovery.isScanning?'Stop discovery':'Discover devices')):null,
