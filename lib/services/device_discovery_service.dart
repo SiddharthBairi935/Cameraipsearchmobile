@@ -81,7 +81,6 @@ class DeviceDiscoveryService extends ChangeNotifier {
       final interfaces = await NetworkInterface.list(
         type: InternetAddressType.IPv4,
         includeLoopback: false,
-        includeLinkLocal: false,
       );
       await _acquireMulticastLock();
       var interfaceCount = 0;
@@ -91,8 +90,7 @@ class DeviceDiscoveryService extends ChangeNotifier {
         for (final address in interface.addresses) {
           if (generation != _discoveryGeneration) return;
           if (address.type != InternetAddressType.IPv4 ||
-              address.isLoopback ||
-              address.isLinkLocal) continue;
+              address.isLoopback) continue;
           await _openInterface(interface, address);
           if (generation != _discoveryGeneration) { _closeSockets(); return; }
           interfaceCount++;
@@ -418,7 +416,7 @@ class DeviceDiscoveryService extends ChangeNotifier {
 
   Future<void> addManualDevice(String address) async {
     final parsed = InternetAddress.tryParse(address.trim());
-    if (parsed == null || parsed.type != InternetAddressType.IPv4 || parsed.isLoopback || parsed.isMulticast || parsed.isLinkLocal || parsed.address == '0.0.0.0' || parsed.address == '255.255.255.255') {
+    if (parsed == null || parsed.type != InternetAddressType.IPv4 || parsed.isLoopback || parsed.isMulticast || parsed.address == '0.0.0.0' || parsed.address == '255.255.255.255') {
       throw const FormatException('Enter a valid unicast IPv4 address.');
     }
     _merge(CameraDevice(
