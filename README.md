@@ -25,7 +25,7 @@ Do not use desktop `main` or the older UI-only PR #2 as the current parity basel
 - TCP reachability checks with per-device timestamps, multi-select priority and cancellation.
 - Manual IPv4 inventory entry, labels, search, manufacturer/status filters and device detail profile.
 - Guarded ONVIF static IPv4 write: local validation, explicit confirmation, SOAP response validation, new-IP verification and separate gateway result handling.
-- Local SQLite inventory, CSV export/share, app data path information and session-only ONVIF HTTP credentials.
+- Local SQLite inventory, CSV export/share, app data path information and session-only ONVIF HTTP Basic/Digest challenge credentials.
 
 ## Deliberately unavailable (matches desktop PR #4)
 
