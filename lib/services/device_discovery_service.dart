@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -148,12 +147,12 @@ class DeviceDiscoveryService extends ChangeNotifier {
       try {
         _sendOnvifProbe(openedSocket);
       } catch (error) {
-        _setStatus('ONVIF multicast send unavailable on ${interface.name}: ${error.message}');
+        _setStatus('ONVIF multicast send unavailable on ${interface.name}: ${error}');
       }
       try {
         _sendProjectProbe(openedSocket, sequence);
       } catch (error) {
-        _setStatus('Oxita UDP probe unavailable on ${interface.name}: ${error.message}');
+        _setStatus('Oxita UDP probe unavailable on ${interface.name}: ${error}');
       }
     } on SocketException catch (error) {
       if (socket != null) { _sockets.remove(socket); socket.close(); }
@@ -201,7 +200,7 @@ class DeviceDiscoveryService extends ChangeNotifier {
   CameraDevice? parseProjectResponse(String payload, int expectedSequence,
       InternetAddress sender, String interfaceName) {
     try {
-      if (utf8.encode(payload).length > 65507 || sender.type != InternetAddressType.IPv4) return null;
+      if (utf8.encode(payload).length > 65507 || sender.type != InternetAddressType.IPv4) { return null; }
       final root = jsonDecode(payload);
       if (root is! Map<String, dynamic> ||
           root['magic'] != 'CAM_DISCOVER' ||
@@ -211,11 +210,11 @@ class DeviceDiscoveryService extends ChangeNotifier {
           root['device'] is! Map<String, dynamic>) { return null; }
       final device = root['device'] as Map<String, dynamic>;
       for (final key in ['mac', 'ipv4', 'netmask', 'gateway', 'dns', 'soc', 'firmware_version']) {
-        if (device[key] != null && device[key] is! String) return null;
+        if (device[key] != null && device[key] is! String) { return null; }
       }
       for (final key in ['http_port', 'rtsp_port']) {
         final value = device[key];
-        if (value != null && (value is! num || value < 1 || value > 65535 || value % 1 != 0)) return null;
+        if (value != null && (value is! num || value < 1 || value > 65535 || value % 1 != 0)) { return null; }
       }
       if (device['activated'] != null && device['activated'] is! bool) return null;
       if (device['dhcp'] != null && device['dhcp'] is! bool) return null;
@@ -317,7 +316,7 @@ class DeviceDiscoveryService extends ChangeNotifier {
         final known = entry.value;
         final conflict = mac.isNotEmpty && known.macAddress.isNotEmpty &&
             mac != _normalizedMac(known.macAddress);
-        if (!conflict && known.onvifEndpoint.toLowerCase() == observation.onvifEndpoint.toLowerCase()) return entry.key;
+        if (!conflict && known.onvifEndpoint.toLowerCase() == observation.onvifEndpoint.toLowerCase()) { return entry.key; }
       }
     }
     if (observation.serialNumber.isNotEmpty && _known(observation.manufacturer)) {
@@ -326,7 +325,7 @@ class DeviceDiscoveryService extends ChangeNotifier {
         final conflict = mac.isNotEmpty && known.macAddress.isNotEmpty &&
             mac != _normalizedMac(known.macAddress);
         if (!conflict && known.serialNumber.toLowerCase() == observation.serialNumber.toLowerCase() &&
-            known.manufacturer.toLowerCase() == observation.manufacturer.toLowerCase()) return entry.key;
+            known.manufacturer.toLowerCase() == observation.manufacturer.toLowerCase()) { return entry.key; }
       }
     }
     for (final entry in _devices.entries) {
@@ -334,7 +333,7 @@ class DeviceDiscoveryService extends ChangeNotifier {
       final conflict = mac.isNotEmpty && known.macAddress.isNotEmpty &&
           mac != _normalizedMac(known.macAddress);
       if (!conflict && observation.ipAddress.isNotEmpty &&
-          known.ipAddress == observation.ipAddress) return entry.key;
+          known.ipAddress == observation.ipAddress) { return entry.key; }
     }
     return null;
   }
