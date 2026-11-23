@@ -647,6 +647,13 @@ class DeviceDiscoveryService extends ChangeNotifier {
 
   @override
   void dispose() {
+    if (_disposed) return;
+    _disposed = true;
+    _cancelSubnet = true;
+    _cancelReachability = true;
+    _isScanning = false;
+    _isSubnetScanning = false;
+    _discoveryGeneration++;
     _timeout?.cancel();
     _onvif.cancelActive();
     _closeSockets();
