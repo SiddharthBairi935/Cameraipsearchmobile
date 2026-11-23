@@ -107,7 +107,7 @@ if manifest.exists():
         "android.permission.ACCESS_LOCAL_NETWORK",
     ]
     additions = "".join(
-        f'    <uses-permission android:name="{permission}" />\\n'
+        f'    <uses-permission android:name="{permission}" />\n'
         for permission in permissions
         if f'android:name="{permission}"' not in content
     )
@@ -120,7 +120,7 @@ if plist.exists():
     content = plist.read_text()
     key = "<key>NSLocalNetworkUsageDescription</key>"
     if key not in content:
-        entry = key + "\\n    <string>Discover and configure compatible cameras on your local network.</string>\\n"
+        entry = key + "\n    <string>Discover and configure compatible cameras on your local network.</string>\n"
         content = content.replace("</dict>", entry + "</dict>", 1)
         plist.write_text(content)
 PY
