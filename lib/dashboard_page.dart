@@ -213,8 +213,8 @@ class _DashboardPageState extends State<DashboardPage> {
         const SizedBox(height:12),
         ...[
           ['MAC',d.macAddress],['Serial number',d.serialNumber],['Hardware ID',d.hardwareId],['Firmware',d.firmwareVersion],['Activation',d.activationState],
-          ['Interface',d.interfaceName],['Sources',d.discoverySources.join(', ')],['Reachability',d.reachabilityStatus],['Checked at',d.reachabilityCheckedAt],
-          ['ONVIF endpoint',d.onvifEndpoint],['Service URL',d.deviceServiceUrl],['Capabilities',d.capabilities.join(', ')],['Network interfaces',d.networkSummary],
+          ['Interface',d.interfaceName],['Sources',d.discoverySources.join(', ')],['Last seen',d.lastSeen?.toLocal().toString() ?? ''],['Reachability',d.reachabilityStatus],['Checked at',d.reachabilityCheckedAt],
+          ['ONVIF endpoint',d.onvifEndpoint],['Service URL',d.deviceServiceUrl],['Interface token',d.networkInterfaceToken],['Capabilities',d.capabilities.join(', ')],['Network interfaces',d.networkSummary],
           ['Camera IPv4',d.ipv4Address],['Subnet mask',d.ipv4SubnetMask],['Gateway',d.ipv4Gateway],['DNS',d.ipv4DnsServer],
           ['DHCP',d.ipv4ConfigurationKnown?(d.ipv4DhcpEnabled?'Enabled':'Disabled'):'Unknown'],['Open TCP ports',d.openPorts.join(', ')],
         ].map((e)=>_detail(e[0],e[1])),
@@ -275,6 +275,10 @@ class _DashboardPageState extends State<DashboardPage> {
       _metric('DISCOVERED','${discovery.devices.length}',Icons.devices),
       _metric('REACHABLE','${discovery.devices.where((d)=>d.reachabilityStatus=='Reachable').length}',Icons.wifi),
       _metric('NEEDS REVIEW','${discovery.devices.where((d)=>d.isCandidate).length}',Icons.search),
+    ]),
+    const SizedBox(height:8),Row(children:[
+      _metric('ONVIF VERIFIED','${discovery.devices.where((d)=>d.discoverySources.contains('ONVIF GetDeviceInformation')).length}',Icons.verified_user_outlined),
+      _metric('OXITA DEVICES','${discovery.devices.where((d)=>d.manufacturer.toLowerCase()=='oxita').length}',Icons.camera_alt_outlined),
     ]),
     const SizedBox(height:14),Card(child:ListTile(leading:Icon(discovery.isScanning?Icons.radar:Icons.wifi_tethering,color:const Color(0xFF74C69D)),
       title:Text(discovery.isScanning?'Discovery in progress':'Network status'),subtitle:Text(discovery.status))),
