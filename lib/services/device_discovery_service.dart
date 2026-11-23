@@ -373,7 +373,7 @@ class DeviceDiscoveryService extends ChangeNotifier {
     return 'No response';
   }
 
-  Future<bool> _ensureLocalNetworkAccess() async {
+  Future<void> _acquireMulticastLock() async {\n    if (!Platform.isAndroid) return;\n    try {\n      const channel = MethodChannel('com.oxita.camera_ip_search_mobile/local_network');\n      await channel.invokeMethod<void>('acquireMulticastLock');\n    } on PlatformException catch (error) {\n      _setStatus('Android multicast lock unavailable: ${error.message ?? error.code}');\n    } on MissingPluginException {\n      _setStatus('Android platform runner is not initialized.');\n    }\n  }\n\n  Future<bool> _ensureLocalNetworkAccess() async {
     if (!Platform.isAndroid) return true;
     try {
       const channel = MethodChannel('com.oxita.camera_ip_search_mobile/local_network');
