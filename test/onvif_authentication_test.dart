@@ -98,7 +98,7 @@ void main() {
       final ha1 = md5.convert(utf8.encode('admin:Oxita:secret')).toString();
       final ha2 = md5.convert(utf8.encode('POST:/onvif/device_service')).toString();
       final expected = md5.convert(utf8.encode(
-        '${ha1}:nonce-123:${parameters['nc']}:${parameters['cnonce']}:auth:${ha2}',
+        '$ha1:nonce-123:${parameters['nc']}:${parameters['cnonce']}:auth:$ha2',
       )).toString();
       expect(parameters['response'], expected);
       expect(body, contains('<tds:'));
