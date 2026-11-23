@@ -1,6 +1,6 @@
 class SensitiveDataRedactor {
   static final _keyValue = RegExp(
-    r'''((?:password|passwd|authorization|proxy-authorization|token|credential|secret|cookie|set-cookie)\s*[:=]\s*)("[^"]*"|'[^']*'|[^\s,;]+)''',
+    r'''((?:password|passwd|username|authorization|proxy-authorization|token|credential|secret|cookie|set-cookie)\s*[:=]\s*)("[^"]*"|'[^']*'|[^\s,;]+)''',
     caseSensitive: false,
   );
   static final _bearer = RegExp(r'\bBearer\s+[A-Za-z0-9._~+/-]+=*', caseSensitive: false);
