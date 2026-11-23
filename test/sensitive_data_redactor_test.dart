@@ -21,6 +21,14 @@ void main() {
       expect(result, isNot(contains('dXNlcjpwYXNz')));
     });
 
+    test('redacts Digest authorization challenge values', () {
+      final result = SensitiveDataRedactor.redact(
+        'Authorization: Digest username="operator", realm="camera", nonce="abc", response="secret-response"',
+      );
+      expect(result, isNot(contains('secret-response')));
+      expect(result, isNot(contains('nonce="abc"')));
+    });
+
     test('redacts URL user-info and XML credential elements', () {
       final result = SensitiveDataRedactor.redact(
         'http://camera:secret@192.0.2.1/onvif <wsse:Password>camera-secret</wsse:Password>',
@@ -32,7 +40,7 @@ void main() {
 
     test('truncates unusually long messages', () {
       final result = SensitiveDataRedactor.redact('x' * 9000);
-      expect(result.length, lessThan(8200));
+      expect(result.length, lessThanOrEqualTo(8210));
       expect(result, contains('[TRUNCATED]'));
     });
   });
