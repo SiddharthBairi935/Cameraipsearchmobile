@@ -23,7 +23,7 @@ The mobile branch includes the PR #4 camera discovery and device-management work
 - Select the ONVIF interface whose active IPv4 address matches the discovered camera before enabling static-IP writes.
 - Bounded opt-in TCP subnet scan (maximum 256 IPv4 hosts, with a window around the selected host on larger networks), common camera ports, candidate provenance, progress and cancellation.
 - TCP reachability checks with per-device timestamps, multi-select priority and cancellation.
-- Manual IPv4 inventory entry, labels, search, manufacturer/status filters and device detail profile.
+- Manual IP address/hostname inventory entry, labels, search, manufacturer/status filters and device detail profile.
 - Guarded ONVIF static IPv4 write: local validation, explicit confirmation, SOAP response validation, new-IP verification and separate gateway result handling.
 - Local SQLite inventory with pre-migration `PRAGMA quick_check`, schema migration, persistent Operation History (latest 1,000; latest 250 displayed), CSV export/share, app data path information and session-only ONVIF HTTP Basic/Digest challenge credentials.
 - Rotating diagnostic logs (2 MiB active file, three archives), best-effort redaction for key/value secrets, Basic/Bearer authorization, URL user-info and namespaced XML secret elements.
@@ -74,5 +74,5 @@ Desktop PR #4 itself is still a draft release candidate and is **not production 
 
 - Operation History and diagnostics are implemented with mobile-native presentation and local file sharing.
 - The desktop Python simulator is not embedded as a background server in the mobile app. Mobile uses deterministic Dart wire fixtures and loopback ONVIF test servers in automated tests; this avoids requiring a rooted phone or binding privileged discovery ports in production.
-- Android native interface MTU/link-state reporting and iOS multicast entitlement approval remain platform-specific validation items. iOS discovery is not certified until Apple approves the multicast entitlement and an entitled physical-device build is tested.
+- Android native interface diagnostics report MTU and link state; iOS reports link state while MTU is not exposed by the current iOS bridge. Both require physical-device validation. iOS multicast entitlement approval remains an external release gate.
 - Log redaction is best-effort and does not guarantee that all sensitive data is removed. Inspect support bundles before sharing.
