@@ -47,8 +47,8 @@ class NetworkConfigValidator {
         parsed.type != InternetAddressType.IPv4 ||
         parsed.isLoopback ||
         parsed.isMulticast ||
-        parsed.isLinkLocal ||
-        parsed.address == '0.0.0.0') return null;
+        parsed.address == '0.0.0.0' ||
+        parsed.address == '255.255.255.255') return null;
     return parsed.rawAddress;
   }
 
