@@ -14,7 +14,6 @@ class DeviceDiscoveryService extends ChangeNotifier {
   static final InternetAddress onvifGroup = InternetAddress('239.255.255.250');
 
   final Map<String, CameraDevice> _devices = {};
-  final Map<RawDatagramSocket, int> _sequences = {};
   final List<RawDatagramSocket> _sockets = [];
   Timer? _timeout;
   int _sequence = DateTime.now().millisecondsSinceEpoch & 0x7fffffff;
@@ -98,7 +97,6 @@ class DeviceDiscoveryService extends ChangeNotifier {
       socket.joinMulticast(onvifGroup, interface);
       final sequence = ++_sequence;
       _sockets.add(socket);
-      _sequences[socket] = sequence;
       socket.listen((event) {
         if (event != RawSocketEvent.read) return;
         Datagram? datagram;
@@ -425,8 +423,11 @@ class DeviceDiscoveryService extends ChangeNotifier {
   }
 
   void _closeSockets() {
+    if (Platform.isAndroid) {
+      const channel = MethodChannel('com.oxita.camera_ip_search_mobile/local_network');
+      unawaited(channel.invokeMethod<void>('releaseMulticastLock').catchError((Object _) {}));
+    }
     for (final socket in _sockets) {
-      _sequences.remove(socket);
       socket.close();
     }
     _sockets.clear();
