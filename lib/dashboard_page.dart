@@ -47,6 +47,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
   Map<String, dynamic>? nativeInterfaceDetails;
   int tab = 0;
   bool loading = true, checking = false;
+  String databaseIntegrity = 'Checking…';
   String? interfaceName, focusedDeviceKey;
   String manufacturerFilter = 'All manufacturers', statusFilter = 'All statuses';
   String reachabilityProgress = '', subnetProgress = '';
@@ -90,9 +91,9 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
       if (!mounted) return;
       for (final d in saved) { discovery.restoreDevice(d); }
       _lastInventorySnapshot = jsonEncode(discovery.devices.map((d) => d.toJson()).toList());
-      setState(() { interfaces = found; interfaceName = found.isEmpty ? null : found.first.name; historyEntries = history; loading = false; });
+      setState(() { interfaces = found; interfaceName = found.isEmpty ? null : found.first.name; historyEntries = history; databaseIntegrity = integrity; loading = false; });
       await _loadNativeInterfaceDetails(interfaceName);
-    } catch (e) { if (mounted) setState(() => loading = false); _msg('Inventory load failed: $e'); }
+    } catch (e) { if (mounted) setState(() { loading = false; databaseIntegrity = 'Check failed'; }); _msg('Inventory load failed: $e'); }
   }
 
   void _changed() {
@@ -729,7 +730,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
       TextButton.icon(onPressed:s.hasData?(){unawaited(Clipboard.setData(ClipboardData(text:s.data!)));_msg('Database location copied.');}:null,icon:const Icon(Icons.copy),label:const Text('Copy location')),
     ]))),
     _detail('Platform',Platform.operatingSystem),_detail('Active interface',interfaceName??'Not selected'),
-    _detail('Saved devices','${discovery.devices.length}'),_detail('Version','0.3.0'),
+    _detail('Saved devices','${discovery.devices.length}'),_detail('SQLite integrity',databaseIntegrity),_detail('Version','0.3.0'),
     _tool(Icons.file_download,'Export inventory','Share the current inventory as CSV.',()=>unawaited(_export())),
     const SizedBox(height:12),const Text('iOS multicast/broadcast requires Apple multicast entitlement and physical-device validation. Android local-network permissions are handled by the native bootstrap runner.',style:TextStyle(color:muted,fontSize:12)),
   ]));
