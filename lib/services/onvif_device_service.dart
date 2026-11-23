@@ -384,8 +384,8 @@ class OnvifDeviceService {
     }
     String quote(String value) {
       final slash = String.fromCharCode(92);
-      final escaped = value.replaceAll(slash, slash + slash).replaceAll('"', slash + '"');
-      return '"' + escaped + '"';
+      final escaped = value.replaceAll(slash, '$slash$slash').replaceAll('"', '$slash"');
+      return '"$escaped"';
     }
     final fields = <String>[
       'username=${quote(credentials.username)}',
@@ -411,7 +411,7 @@ class OnvifDeviceService {
   static String _envelope(String operation, String body) =>
       '<?xml version="1.0" encoding="UTF-8"?>'
       '<s:Envelope xmlns:s="$_soapNamespace" xmlns:tds="$_deviceNamespace" '
-      'xmlns:tt="http://www.onvif.org/ver10/schema"><s:Body><tds:$operation>$body</tds:$s:Body></s:Envelope>';
+      'xmlns:tt="http://www.onvif.org/ver10/schema"><s:Body><tds:$operation>$body</tds:$operation></s:Body></s:Envelope>';
 
   static XmlElement? _firstElement(XmlNode root, String localName) {
     for (final element in root.descendants.whereType<XmlElement>()) {
@@ -439,7 +439,7 @@ class OnvifDeviceService {
   static int _maskToPrefix(String mask) {
     final bytes = InternetAddress.tryParse(mask)!.rawAddress;
     var value = 0;
-    for (final byte in bytes) value = (value << 8) | byte;
+    for (final byte in bytes) { value = (value << 8) | byte; }
     var count = 0;
     var zeroSeen = false;
     for (var bit = 31; bit >= 0; bit--) {
