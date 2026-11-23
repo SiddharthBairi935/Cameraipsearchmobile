@@ -58,7 +58,7 @@ class MainActivity : FlutterActivity() {
                 result.notImplemented()
                 return@setMethodCallHandler
             }
-            if (Build.VERSION.SDK_INT < 37 ||
+            if (Build.VERSION.SDK_INT < 37 || applicationInfo.targetSdkVersion < 37 ||
                 checkSelfPermission(localNetworkPermission) == PackageManager.PERMISSION_GRANTED
             ) {
                 result.success(true)
