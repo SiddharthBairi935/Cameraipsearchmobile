@@ -435,7 +435,9 @@ class DeviceDiscoveryService extends ChangeNotifier {
       return;
     }
     _cancelSubnet = false;
-    _isSubnetScanning = true;
+    if (localAddress.type != InternetAddressType.IPv4 || localAddress.isLoopback || localAddress.isMulticast) {
+      throw const FormatException('A usable local IPv4 address is required.');
+    }
     final ip = localAddress.rawAddress;
     final maskBytes = mask.rawAddress;
     if (ip.length != 4 || maskBytes.length != 4) throw const FormatException('IPv4 only.');
@@ -445,9 +447,15 @@ class DeviceDiscoveryService extends ChangeNotifier {
       broadcast = (broadcast << 8) | ((ip[i] & maskBytes[i]) | (~maskBytes[i] & 255));
       own = (own << 8) | ip[i];
     }
+    final maskValue = (maskBytes[0] << 24) | (maskBytes[1] << 16) | (maskBytes[2] << 8) | maskBytes[3];
+    final inverse = (~maskValue) & 0xffffffff;
+    if (maskValue == 0 || maskValue == 0xffffffff || (inverse & (inverse + 1)) != 0) {
+      throw const FormatException('Subnet mask must be a contiguous IPv4 mask from /1 through /30.');
+    }
     final first = network + 1;
     final last = broadcast - 1;
     if (last < first) throw const FormatException('Invalid subnet.');
+    _isSubnetScanning = true;
     final hostCount = last - first + 1;
     final end = hostCount <= 256 ? last : (own + 128 < last ? own + 128 : last);
     final start = hostCount <= 256 ? first : (own - 127 > first ? own - 127 : first);
