@@ -2,7 +2,6 @@ import 'dart:io';
 
 import 'package:camera_ip_search_mobile/services/inventory_store.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sqflite/sqflite.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 void main() {
