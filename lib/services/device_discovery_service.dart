@@ -25,6 +25,20 @@ class DeviceDiscoveryService extends ChangeNotifier {
   bool get isScanning => _isScanning;
   String get status => _status;
 
+  void restoreDevice(CameraDevice device) {
+    final key = device.macAddress.isNotEmpty ? device.macAddress : device.ipAddress;
+    if (key.isNotEmpty) _devices[key] = device;
+  }
+
+  void updateReachability(CameraDevice device, String result) {
+    final key = device.macAddress.isNotEmpty ? device.macAddress : device.ipAddress;
+    final existing = _devices[key];
+    if (existing != null) {
+      _devices[key] = existing.copyWith(reachabilityStatus: result);
+      notifyListeners();
+    }
+  }
+
   void _setStatus(String value) {
     _status = value;
     notifyListeners();
