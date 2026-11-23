@@ -120,7 +120,6 @@ class DeviceDiscoveryService extends ChangeNotifier {
       socket = await RawDatagramSocket.bind(localAddress, 0, reuseAddress: true);
       socket.broadcastEnabled = true;
       socket.multicastHops = 1;
-      socket.multicastInterface = localAddress;
       try {
         socket.joinMulticast(onvifGroup, interface);
       } on SocketException catch (error) {
