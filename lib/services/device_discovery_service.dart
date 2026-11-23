@@ -10,8 +10,10 @@ import '../models/camera_device.dart';
 import 'onvif_device_service.dart';
 
 class DeviceDiscoveryService extends ChangeNotifier {
-  DeviceDiscoveryService({OnvifDeviceService? onvifService})
+  DeviceDiscoveryService({OnvifDeviceService? onvifService, this.onOperation})
       : _onvif = onvifService ?? OnvifDeviceService();
+
+  final void Function(String operation, String target, String outcome, String details)? onOperation;
 
   final OnvifDeviceService _onvif;
   bool _cancelSubnet = false;
@@ -533,7 +535,9 @@ class DeviceDiscoveryService extends ChangeNotifier {
     }
     await Future.wait(tasks);
     _isSubnetScanning = false;
-    _setStatus(_cancelSubnet ? 'Subnet scan cancelled after $completed host(s).' : 'Subnet scan complete. $candidates unverified candidate(s) found from $completed host(s).');
+    final cancelled = _cancelSubnet;
+    _setStatus(cancelled ? 'Subnet scan cancelled after $completed host(s).' : 'Subnet scan complete. $candidates unverified candidate(s) found from $completed host(s).');
+    onOperation?.call('Subnet scan', _selectedInterfaceName, cancelled ? 'Cancelled' : 'Completed', '$completed host(s) checked; $candidates unverified candidate(s) found.');
   }
 
   void cancelSubnetScan() { _cancelSubnet = true; _setStatus('Cancelling subnet scan…'); }
@@ -579,9 +583,11 @@ class DeviceDiscoveryService extends ChangeNotifier {
       completed++;
       onProgress?.call(completed, devices.length, device);
     }
-    _setStatus(_cancelReachability
+    final cancelled = _cancelReachability;
+    _setStatus(cancelled
         ? 'Reachability check cancelled after $completed device(s).'
         : 'Reachability check complete for $completed device(s).');
+    onOperation?.call('Reachability', '', cancelled ? 'Cancelled' : 'Completed', '$completed of ${devices.length} device(s) checked.');
     return completed;
   }
 
@@ -621,6 +627,7 @@ class DeviceDiscoveryService extends ChangeNotifier {
     _isScanning = false;
     _closeSockets();
     _setStatus('Discovery finished. ${_devices.length} device(s) found.');
+    onOperation?.call('Discovery', _selectedInterfaceName, 'Completed', '${_devices.length} device(s) in local inventory.');
   }
 
   Future<void> cancelDiscovery({bool notify = true}) async {
@@ -631,7 +638,10 @@ class DeviceDiscoveryService extends ChangeNotifier {
     _timeout = null;
     _isScanning = false;
     _closeSockets();
-    if (notify) _setStatus('Discovery cancelled.');
+    if (notify) {
+      _setStatus('Discovery cancelled.');
+      onOperation?.call('Discovery', _selectedInterfaceName, 'Cancelled', '${_devices.length} device(s) retained.');
+    }
   }
 
   void _closeSockets() {
