@@ -27,7 +27,6 @@ class InventoryStore {
             updated_at TEXT NOT NULL
           )
         ''');
-        await db.execute('CREATE INDEX idx_devices_ip ON devices(json_extract(payload, "\$.ipAddress"))');
       },
     );
     return _database!;
