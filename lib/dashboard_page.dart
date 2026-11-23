@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -42,6 +43,7 @@ class _DashboardPageState extends State<DashboardPage> {
   String? interfaceName;
   String manufacturerFilter = 'All manufacturers', statusFilter = 'All statuses';
   String progress = '';
+  String? _lastInventorySnapshot;
 
   @override
   void initState() {
@@ -72,11 +74,20 @@ class _DashboardPageState extends State<DashboardPage> {
       final found = await NetworkInterface.list(type: InternetAddressType.IPv4, includeLoopback: false, includeLinkLocal: true);
       if (!mounted) return;
       for (final d in saved) { discovery.restoreDevice(d); }
+      _lastInventorySnapshot = jsonEncode(discovery.devices.map((d) => d.toJson()).toList());
       setState(() { interfaces = found; interfaceName = found.isEmpty ? null : found.first.name; loading = false; });
     } catch (e) { if (mounted) setState(() => loading = false); _msg('Inventory load failed: $e'); }
   }
 
-  void _changed() { if (mounted) setState(() {}); if (!loading) unawaited(store.save(discovery.devices)); }
+  void _changed() {
+    if (mounted) setState(() {});
+    if (loading) return;
+    final snapshot = jsonEncode(discovery.devices.map((d) => d.toJson()).toList());
+    if (snapshot != _lastInventorySnapshot) {
+      _lastInventorySnapshot = snapshot;
+      unawaited(store.save(discovery.devices));
+    }
+  }
   @override
   void dispose() { discovery.removeListener(_changed); discovery.dispose(); unawaited(store.close()); search.dispose(); super.dispose(); }
   NetworkInterface? get activeInterface {
