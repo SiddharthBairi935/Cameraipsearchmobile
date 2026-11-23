@@ -43,7 +43,7 @@ The bootstrap script generates platform runner folders without replacing the app
 
 ## Platform networking requirements
 
-- Android: direct LAN UDP/TCP discovery is subject to Android local-network permission policy. Before targeting Android 17 (API 37), add the ACCESS_LOCAL_NETWORK manifest declaration and runtime request flow. Test Wi-Fi broadcast/multicast on physical devices.
+- Android: the platform bootstrap script adds the ACCESS_LOCAL_NETWORK manifest declaration and a native runtime request bridge for Android 17 (API 37), plus the Wi-Fi multicast lock. Confirm targetSdk is set appropriately before shipping against API 37. Test Wi-Fi broadcast/multicast on physical devices.
 - iOS: add NSLocalNetworkUsageDescription to Runner/Info.plist. UDP multicast and broadcast require Apple's com.apple.developer.networking.multicast entitlement and an authorized provisioning profile. The entitlement must be requested from Apple; it cannot be assumed.
 - Until these platform-specific requirements are satisfied and tested, do not claim feature parity on iOS.
 
