@@ -47,6 +47,10 @@ class DeviceDiscoveryService extends ChangeNotifier {
 
   Future<void> startDiscovery() async {
     if (_isScanning) return;
+    if (!await _ensureLocalNetworkAccess()) {
+      _setStatus('Local network permission is required to discover cameras.');
+      return;
+    }
     await cancelDiscovery(notify: false);
     _devices.clear();
     _isScanning = true;
@@ -70,9 +74,10 @@ class DeviceDiscoveryService extends ChangeNotifier {
       }
       if (_sockets.isEmpty) {
         _isScanning = false;
-        _setStatus('No usable IPv4 network interface was available.');
+        _setStatus('No usable IPv4 socket could be opened on the active interfaces.');
         return;
       }
+      await _acquireMulticastLock();
       _setStatus('Sending ONVIF and project-camera probes on $interfaceCount interface address(es)…');
       _timeout = Timer(const Duration(seconds: 6), _finishDiscovery);
     } on SocketException catch (error) {
@@ -291,6 +296,10 @@ class DeviceDiscoveryService extends ChangeNotifier {
   }
 
   Future<void> scanSubnet(InternetAddress localAddress, InternetAddress mask) async {
+    if (!await _ensureLocalNetworkAccess()) {
+      _setStatus('Local network permission is required to scan this subnet.');
+      return;
+    }
     final ip = localAddress.rawAddress;
     final maskBytes = mask.rawAddress;
     if (ip.length != 4 || maskBytes.length != 4) throw const FormatException('IPv4 only.');
@@ -358,6 +367,7 @@ class DeviceDiscoveryService extends ChangeNotifier {
   }
 
   Future<String> checkReachability(CameraDevice device) async {
+    if (!await _ensureLocalNetworkAccess()) return 'Permission required';
     const ports = [80, 443, 554, 8000, 8080, 8899, 34567];
     for (final port in {...device.openPorts, ...ports}) {
       try {
@@ -373,7 +383,19 @@ class DeviceDiscoveryService extends ChangeNotifier {
     return 'No response';
   }
 
-  Future<void> _acquireMulticastLock() async {\n    if (!Platform.isAndroid) return;\n    try {\n      const channel = MethodChannel('com.oxita.camera_ip_search_mobile/local_network');\n      await channel.invokeMethod<void>('acquireMulticastLock');\n    } on PlatformException catch (error) {\n      _setStatus('Android multicast lock unavailable: ${error.message ?? error.code}');\n    } on MissingPluginException {\n      _setStatus('Android platform runner is not initialized.');\n    }\n  }\n\n  Future<bool> _ensureLocalNetworkAccess() async {
+  Future<void> _acquireMulticastLock() async {
+    if (!Platform.isAndroid) return;
+    try {
+      const channel = MethodChannel('com.oxita.camera_ip_search_mobile/local_network');
+      await channel.invokeMethod<void>('acquireMulticastLock');
+    } on PlatformException catch (error) {
+      _setStatus('Android multicast lock unavailable: ${error.message ?? error.code}');
+    } on MissingPluginException {
+      _setStatus('Android platform runner is not initialized.');
+    }
+  }
+
+  Future<bool> _ensureLocalNetworkAccess() async {
     if (!Platform.isAndroid) return true;
     try {
       const channel = MethodChannel('com.oxita.camera_ip_search_mobile/local_network');
