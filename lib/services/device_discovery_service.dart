@@ -455,7 +455,7 @@ class DeviceDiscoveryService extends ChangeNotifier {
             label.length <= 63 &&
             RegExp(r'^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?
 
-  Future<void> scanSubnet(InternetAddress localAddress, InternetAddress mask, {void Function(int completed, int total, int candidates)? onProgress}) async {
+  Future<void> scanSubnet(InternetAddress localAddress, InternetAddress mask, {String interfaceName = '', void Function(int completed, int total, int candidates)? onProgress}) async {
     if (_disposed || _isSubnetScanning) return;
     if (!await _ensureLocalNetworkAccess()) {
       if (!_disposed) _setStatus('Local network permission is required to scan this subnet.');
@@ -463,6 +463,7 @@ class DeviceDiscoveryService extends ChangeNotifier {
     }
     if (_disposed) return;
     _cancelSubnet = false;
+    if (interfaceName.isNotEmpty) _selectedInterfaceName = interfaceName;
     if (localAddress.type != InternetAddressType.IPv4 || localAddress.isLoopback || localAddress.isMulticast) {
       throw const FormatException('A usable local IPv4 address is required.');
     }
