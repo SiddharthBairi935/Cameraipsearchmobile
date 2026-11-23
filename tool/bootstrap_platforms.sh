@@ -18,7 +18,9 @@ mkdir -p "$kotlin_dir"
 cat > "$kotlin_dir/MainActivity.kt" <<'KOTLIN'
 package com.oxita.camera_ip_search_mobile
 
+import android.content.Context
 import android.content.pm.PackageManager
+import android.net.wifi.WifiManager
 import android.os.Build
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -26,6 +28,7 @@ import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
     private var permissionResult: MethodChannel.Result? = null
+    private var multicastLock: WifiManager.MulticastLock? = null
     private val permissionRequestCode = 9107
     private val localNetworkPermission = "android.permission.ACCESS_LOCAL_NETWORK"
 
@@ -35,11 +38,27 @@ class MainActivity : FlutterActivity() {
             flutterEngine.dartExecutor.binaryMessenger,
             "com.oxita.camera_ip_search_mobile/local_network"
         ).setMethodCallHandler { call, result ->
+            if (call.method == "acquireMulticastLock") {
+                val wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+                if (multicastLock == null) {
+                    multicastLock = wifiManager.createMulticastLock("camera_ip_search_mobile_discovery").apply {
+                        setReferenceCounted(false)
+                    }
+                }
+                if (multicastLock?.isHeld != true) multicastLock?.acquire()
+                result.success(true)
+                return@setMethodCallHandler
+            }
+            if (call.method == "releaseMulticastLock") {
+                if (multicastLock?.isHeld == true) multicastLock?.release()
+                result.success(true)
+                return@setMethodCallHandler
+            }
             if (call.method != "requestLocalNetworkPermission") {
                 result.notImplemented()
                 return@setMethodCallHandler
             }
-            if (Build.VERSION.SDK_INT < 37 ||
+            if (Build.VERSION.SDK_INT < 37 || applicationInfo.targetSdkVersion < 37 ||
                 checkSelfPermission(localNetworkPermission) == PackageManager.PERMISSION_GRANTED
             ) {
                 result.success(true)
@@ -52,6 +71,11 @@ class MainActivity : FlutterActivity() {
             permissionResult = result
             requestPermissions(arrayOf(localNetworkPermission), permissionRequestCode)
         }
+    }
+
+    override fun onDestroy() {
+        if (multicastLock?.isHeld == true) multicastLock?.release()
+        super.onDestroy()
     }
 
     override fun onRequestPermissionsResult(
