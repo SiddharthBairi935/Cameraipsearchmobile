@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
@@ -182,7 +183,7 @@ class _DashboardPageState extends State<DashboardPage> {
       if (ip == null || ip.type != InternetAddressType.IPv4 || ip.isLoopback || ip.isMulticast || prefix == null || prefix < 1 || prefix > 30) throw const FormatException('Enter a valid IPv4 CIDR, e.g. 192.168.1.20/24.');
       if (!activeInterface!.addresses.any((a) => a.address == ip.address)) throw const FormatException('The CIDR address must belong to the selected network interface.');
       final m = (0xffffffff << (32-prefix)) & 0xffffffff;
-      final mask = InternetAddress.fromRawAddress([(m>>24)&255,(m>>16)&255,(m>>8)&255,m&255]);
+      final mask = InternetAddress.fromRawAddress(Uint8List.fromList([(m>>24)&255,(m>>16)&255,(m>>8)&255,m&255]));
       await discovery.scanSubnet(ip,mask,onProgress:(done,total,candidates){ if(mounted)setState(()=>subnetProgress='Subnet: $done/$total · $candidates candidates'); });
       if(mounted)setState(()=>subnetProgress='');
     } on FormatException catch(e) { _msg(e.message); }
@@ -303,7 +304,7 @@ class _DashboardPageState extends State<DashboardPage> {
       content:Text('Apply ${values[0]} / ${values[1]} to ${d.ipAddress}? The app will verify the new IP before updating inventory.'),
       actions:[TextButton(onPressed:()=>Navigator.pop(context,false),child:const Text('Go back')),
         FilledButton(onPressed:()=>Navigator.pop(context,true),child:const Text('Apply'))]));
-    if(ok!=true)return;
+    if(ok!=true || !mounted)return;
     try { final result=await discovery.applyStaticIpv4(d,address:values[0],subnetMask:values[1],gateway:values[2]); await store.save(discovery.devices); _msg(result.message); }
     on OnvifException catch(e){_msg(e.message);}
   }
@@ -367,7 +368,7 @@ class _DashboardPageState extends State<DashboardPage> {
   Widget _overview()=>ListView(padding:const EdgeInsets.all(18),children:[
     _heading('Device manager','Discover, verify and configure compatible cameras'),
     const SizedBox(height:14),
-    DropdownButtonFormField<String>(value:interfaceName,isExpanded:true,decoration:const InputDecoration(labelText:'Active network interface',prefixIcon:Icon(Icons.lan_outlined)),
+    DropdownButtonFormField<String>(key:ValueKey(interfaceName),initialValue:interfaceName,isExpanded:true,decoration:const InputDecoration(labelText:'Active network interface',prefixIcon:Icon(Icons.lan_outlined)),
       items:interfaces.map((n)=>DropdownMenuItem(value:n.name,child:Text(n.name))).toList(),onChanged:(v)=>setState(()=>interfaceName=v)),
     const SizedBox(height:8),
     Card(child: ListTile(
@@ -401,9 +402,9 @@ class _DashboardPageState extends State<DashboardPage> {
       _heading('Device inventory','${visible.length} matching device(s)'),
       const SizedBox(height:10),TextField(controller:search,onChanged:(_)=>setState((){}),decoration:const InputDecoration(prefixIcon:Icon(Icons.search),hintText:'Search IP, MAC, model, serial or label')),
       const SizedBox(height:8),Row(children:[
-        Expanded(child:DropdownButtonFormField<String>(value:manufacturerFilter,isExpanded:true,decoration:const InputDecoration(labelText:'Manufacturer'),
+        Expanded(child:DropdownButtonFormField<String>(key:ValueKey(manufacturerFilter),initialValue:manufacturerFilter,isExpanded:true,decoration:const InputDecoration(labelText:'Manufacturer'),
           items:const ['All manufacturers','ONVIF devices','Oxita devices','Other / unknown'].map((v)=>DropdownMenuItem(value:v,child:Text(v,overflow:TextOverflow.ellipsis))).toList(),onChanged:(v)=>setState(()=>manufacturerFilter=v??'All manufacturers'))),
-        const SizedBox(width:8),Expanded(child:DropdownButtonFormField<String>(value:statusFilter,isExpanded:true,decoration:const InputDecoration(labelText:'Status'),
+        const SizedBox(width:8),Expanded(child:DropdownButtonFormField<String>(key:ValueKey(statusFilter),initialValue:statusFilter,isExpanded:true,decoration:const InputDecoration(labelText:'Status'),
           items:const ['All statuses','Online','Activated','Not activated','Unverified candidates'].map((v)=>DropdownMenuItem(value:v,child:Text(v,overflow:TextOverflow.ellipsis))).toList(),onChanged:(v)=>setState(()=>statusFilter=v??'All statuses'))),
       ]),
       Row(children:[TextButton(onPressed:()=>setState(()=>selected.addAll(visible.map(_key))),child:const Text('Select all')),
