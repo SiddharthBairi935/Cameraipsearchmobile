@@ -21,3 +21,7 @@ jobs:
         run: flutter analyze
       - name: Test
         run: flutter test
+      - name: Generate Android and iOS platform runners
+        run: bash tool/bootstrap_platforms.sh
+      - name: Build Android debug APK
+        run: flutter build apk --debug
