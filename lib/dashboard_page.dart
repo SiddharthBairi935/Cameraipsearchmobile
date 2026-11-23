@@ -41,7 +41,7 @@ class _DashboardPageState extends State<DashboardPage> {
   List<NetworkInterface> interfaces = [];
   int tab = 0;
   bool loading = true, checking = false;
-  String? interfaceName;
+  String? interfaceName, focusedDeviceKey;
   String manufacturerFilter = 'All manufacturers', statusFilter = 'All statuses';
   String reachabilityProgress = '', subnetProgress = '';
   String? _lastInventorySnapshot;
@@ -307,6 +307,7 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   Future<void> _details(CameraDevice d) async {
+    focusedDeviceKey = _key(d);
     await showModalBottomSheet<void>(context:context,isScrollControlled:true,backgroundColor:surface,builder:(context)=>DraggableScrollableSheet(
       expand:false,initialChildSize:.88,maxChildSize:.96,builder:(context,scroll)=>ListView(controller:scroll,padding:const EdgeInsets.all(20),children:[
         Center(child:Container(width:38,height:4,decoration:BoxDecoration(color:Colors.white24,borderRadius:BorderRadius.circular(4)))),
@@ -429,6 +430,90 @@ class _DashboardPageState extends State<DashboardPage> {
   Widget _tool(IconData icon,String title,String subtitle,VoidCallback action)=>Card(child:ListTile(leading:Icon(icon,color:red),title:Text(title),subtitle:Text(subtitle),trailing:const Icon(Icons.chevron_right),onTap:action));
   Widget _cap(String title,String subtitle,bool ok)=>Card(child:ListTile(dense:true,title:Text(title),subtitle:Text(subtitle),trailing:Icon(ok?Icons.check_circle_outline:Icons.lock_outline,color:ok?const Color(0xFF74C69D):muted)));
 
+  CameraDevice? get _focusedDevice {
+    for (final device in discovery.devices) {
+      if (_key(device) == focusedDeviceKey) return device;
+    }
+    return null;
+  }
+
+  Widget _maintenance() {
+    final device = _focusedDevice;
+    if (device == null) {
+      return ListView(padding: const EdgeInsets.all(18), children: [
+        _heading('Maintenance', 'Camera actions and network configuration'),
+        const SizedBox(height: 14),
+        const Card(child: Padding(padding: EdgeInsets.all(20), child: Text(
+          'Select a camera from the Devices page and open its details first. The selected camera will appear here for maintenance actions.',
+          style: TextStyle(color: muted, height: 1.45),
+        ))),
+        _cap('Static IPv4 configuration', 'Requires a refreshed ONVIF interface profile', false),
+        _cap('Firmware update / reboot', 'Not implemented in desktop PR #4', false),
+      ]);
+    }
+    final canConfigure = device.ipv4ConfigurationKnown && device.networkInterfaceToken.isNotEmpty;
+    return ListView(padding: const EdgeInsets.all(18), children: [
+      _heading('Maintenance', 'Actions for the selected camera'),
+      const SizedBox(height: 14),
+      Card(child: ListTile(
+        leading: const Icon(Icons.videocam, color: red),
+        title: Text(device.userLabel.isEmpty ? device.ipAddress : device.userLabel),
+        subtitle: Text('${device.ipAddress} · ${device.manufacturer} · ${device.model}'),
+        trailing: Text(device.reachabilityStatus, style: const TextStyle(color: muted, fontSize: 11)),
+      )),
+      const SizedBox(height: 14),
+      _heading('Device actions', 'Refresh camera information or open its web interface'),
+      const SizedBox(height: 8),
+      Row(children: [
+        Expanded(child: OutlinedButton.icon(
+          onPressed: () => unawaited(discovery.refreshDeviceInfo(device)),
+          icon: const Icon(Icons.refresh), label: const Text('Refresh info'),
+        )),
+        const SizedBox(width: 8),
+        Expanded(child: OutlinedButton.icon(
+          onPressed: () async {
+            final uri = Uri(scheme: 'http', host: device.ipAddress);
+            if (await canLaunchUrl(uri)) await launchUrl(uri, mode: LaunchMode.externalApplication);
+          },
+          icon: const Icon(Icons.open_in_browser), label: const Text('Open web UI'),
+        )),
+      ]),
+      const SizedBox(height: 20),
+      _heading('IPv4 network configuration', 'Camera-side settings reported by ONVIF'),
+      const SizedBox(height: 8),
+      _detail('Current IP', device.ipv4Address),
+      _detail('Subnet mask', device.ipv4SubnetMask),
+      _detail('Gateway', device.ipv4Gateway),
+      _detail('DNS', device.ipv4DnsServer),
+      _detail('DHCP', device.ipv4ConfigurationKnown ? (device.ipv4DhcpEnabled ? 'Enabled' : 'Disabled') : 'Unknown'),
+      _detail('Interface token', device.networkInterfaceToken),
+      const SizedBox(height: 10),
+      Row(children: [
+        Expanded(child: OutlinedButton(
+          onPressed: canConfigure ? () => unawaited(_previewStaticIpv4(device)) : null,
+          child: const Text('Preview IP'),
+        )),
+        const SizedBox(width: 8),
+        Expanded(child: FilledButton(
+          onPressed: canConfigure ? () => unawaited(_staticIp(device)) : null,
+          child: const Text('Apply static IPv4'),
+        )),
+      ]),
+      const SizedBox(height: 20),
+      _heading('Firmware status', 'Read-only information from the camera'),
+      const SizedBox(height: 8),
+      _detail('Reported firmware', device.firmwareVersion),
+      const Card(child: ListTile(
+        leading: Icon(Icons.lock_outline, color: muted),
+        title: Text('Firmware update unavailable'),
+        subtitle: Text('No verified firmware upload, signature validation or recovery workflow is implemented in desktop PR #4.'),
+      )),
+      const SizedBox(height: 8),
+      _cap('Reboot / factory reset', 'Not implemented', false),
+      _cap('DHCP / DNS write configuration', 'Not implemented', false),
+    ]);
+  }
+
   Widget _settings()=>FutureBuilder<String>(future:store.databasePath,builder:(context,s)=>ListView(padding:const EdgeInsets.all(18),children:[
     _heading('Application settings','Local inventory and platform information'),
     Card(child:Padding(padding:const EdgeInsets.all(14),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
@@ -451,12 +536,13 @@ class _DashboardPageState extends State<DashboardPage> {
         Text('CAMERA DEVICE MANAGER',style:TextStyle(fontSize:9,color:muted,letterSpacing:1)),
       ]),
     ]),actions:[IconButton(onPressed:()=>unawaited(_help()),icon:const Icon(Icons.help_outline),tooltip:'Help'),IconButton(onPressed:()=>unawaited(_manual()),icon:const Icon(Icons.add_circle_outline),tooltip:'Add device'),IconButton(onPressed:()=>unawaited(_export()),icon:const Icon(Icons.file_download),tooltip:'Export CSV')]),
-    body:SafeArea(child:IndexedStack(index:tab,children:[_overview(),_devices(),_tools(),_settings()])),
+    body:SafeArea(child:IndexedStack(index:tab,children:[_overview(),_devices(),_tools(),_maintenance(),_settings()])),
     floatingActionButton:tab<2?FloatingActionButton.extended(onPressed:()=>unawaited(_discover()),backgroundColor:red,foregroundColor:Colors.white,
       icon:Icon(discovery.isScanning?Icons.stop:Icons.radar),label:Text(discovery.isScanning?'Stop discovery':'Discover devices')):null,
     bottomNavigationBar:NavigationBar(selectedIndex:tab,onDestinationSelected:(v)=>setState(()=>tab=v),destinations:const[
       NavigationDestination(icon:Icon(Icons.grid_view),label:'Overview'),NavigationDestination(icon:Icon(Icons.videocam_outlined),label:'Devices'),
-      NavigationDestination(icon:Icon(Icons.tune),label:'Tools'),NavigationDestination(icon:Icon(Icons.settings_outlined),label:'Settings'),
+      NavigationDestination(icon:Icon(Icons.tune),label:'Tools'),NavigationDestination(icon:Icon(Icons.build_outlined),label:'Maintenance'),
+      NavigationDestination(icon:Icon(Icons.settings_outlined),label:'Settings'),
     ]),
   );
 }
