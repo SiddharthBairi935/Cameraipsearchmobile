@@ -79,6 +79,13 @@ class _DashboardPageState extends State<DashboardPage> {
   void _changed() { if (mounted) setState(() {}); if (!loading) unawaited(store.save(discovery.devices)); }
   @override
   void dispose() { discovery.removeListener(_changed); discovery.dispose(); store.close(); search.dispose(); super.dispose(); }
+  NetworkInterface? get activeInterface {
+    for (final item in interfaces) {
+      if (item.name == interfaceName) return item;
+    }
+    return null;
+  }
+
   String _key(CameraDevice d) => d.macAddress.isNotEmpty ? d.macAddress : d.id;
   void _msg(String text) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text))); }
 
@@ -245,6 +252,14 @@ class _DashboardPageState extends State<DashboardPage> {
     const SizedBox(height:14),
     DropdownButtonFormField<String>(value:interfaceName,isExpanded:true,decoration:const InputDecoration(labelText:'Active network interface',prefixIcon:Icon(Icons.lan_outlined)),
       items:interfaces.map((n)=>DropdownMenuItem(value:n.name,child:Text(n.name))).toList(),onChanged:(v)=>setState(()=>interfaceName=v)),
+    const SizedBox(height:8),
+    Card(child: ListTile(
+      dense: true,
+      leading: const Icon(Icons.router_outlined, color: red),
+      title: Text(activeInterface?.name ?? 'No active interface selected'),
+      subtitle: Text(activeInterface?.addresses.map((a) => a.address).join(' · ') ?? 'Select an active IPv4 interface'),
+      trailing: activeInterface == null ? null : Text('IF ${activeInterface!.index}', style: const TextStyle(color: muted, fontSize: 11)),
+    )),
     const SizedBox(height:14),Row(children:[
       _metric('DISCOVERED','${discovery.devices.length}',Icons.devices),
       _metric('REACHABLE','${discovery.devices.where((d)=>d.reachabilityStatus=='Reachable').length}',Icons.wifi),
