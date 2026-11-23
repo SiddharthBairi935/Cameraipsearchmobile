@@ -206,7 +206,8 @@ class DeviceDiscoveryService extends ChangeNotifier {
         final xaddrs = textOf('XAddrs');
         final scopes = textOf('Scopes');
         if (endpoint.isEmpty && xaddrs.isEmpty) continue;
-        final firstXAddr = xaddrs.split(RegExp(r'\s+')).where((s) => s.isNotEmpty).firstOrNull ?? '';
+        final xaddrParts = xaddrs.split(RegExp(r'\s+')).where((s) => s.isNotEmpty).toList();
+        final firstXAddr = xaddrParts.isEmpty ? '' : xaddrParts.first;
         final uri = Uri.tryParse(firstXAddr);
         final serviceUrl = uri != null &&
                 (uri.scheme == 'http' || uri.scheme == 'https') &&
