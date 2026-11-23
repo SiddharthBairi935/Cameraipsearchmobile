@@ -5,8 +5,9 @@ void main() {
   group('SensitiveDataRedactor', () {
     test('redacts common key-value secrets', () {
       final result = SensitiveDataRedactor.redact(
-        'password=hunter2 authorization: Bearer abc123 token=xyz',
+        'username=admin password=hunter2 authorization: Bearer abc123 token=xyz',
       );
+      expect(result, isNot(contains('admin')));
       expect(result, isNot(contains('hunter2')));
       expect(result, isNot(contains('abc123')));
       expect(result, isNot(contains('xyz')));
