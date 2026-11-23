@@ -92,7 +92,7 @@ class DeviceDiscoveryService extends ChangeNotifier {
           if (generation != _discoveryGeneration) return;
           if (address.type != InternetAddressType.IPv4 ||
               address.isLoopback) continue;
-          await _openInterface(interface, address);
+          await _openInterface(interface, address, generation);
           if (generation != _discoveryGeneration) { _closeSockets(); return; }
           interfaceCount++;
         }
@@ -115,10 +115,11 @@ class DeviceDiscoveryService extends ChangeNotifier {
     }
   }
 
-  Future<void> _openInterface(NetworkInterface interface, InternetAddress localAddress) async {
+  Future<void> _openInterface(NetworkInterface interface, InternetAddress localAddress, int generation) async {
     RawDatagramSocket? socket;
     try {
       socket = await RawDatagramSocket.bind(localAddress, 0, reuseAddress: true);
+      if (generation != _discoveryGeneration) { socket.close(); return; }
       socket.broadcastEnabled = true;
       socket.multicastHops = 1;
       try {
@@ -428,6 +429,7 @@ class DeviceDiscoveryService extends ChangeNotifier {
   }
 
   Future<void> scanSubnet(InternetAddress localAddress, InternetAddress mask, {void Function(int completed, int total, int candidates)? onProgress}) async {
+    if (_isSubnetScanning) return;
     if (!await _ensureLocalNetworkAccess()) {
       _setStatus('Local network permission is required to scan this subnet.');
       return;
