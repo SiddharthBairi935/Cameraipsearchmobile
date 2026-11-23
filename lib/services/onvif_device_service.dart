@@ -267,7 +267,7 @@ class OnvifDeviceService {
       request.followRedirects = false;
       request.headers.contentType = ContentType('application', 'soap+xml', charset: 'utf-8');
       request.write(_envelope(operation, body));
-      final response = await request.close().timeout(const Duration(seconds: 5));
+      final response = await request.close().timeout(const Duration(seconds: 45));
       final bytes = await response.fold<List<int>>(<int>[], (all, chunk) {
         if (all.length + chunk.length > 1024 * 1024) throw const OnvifException('ONVIF response exceeds 1 MB.');
         return all..addAll(chunk);
