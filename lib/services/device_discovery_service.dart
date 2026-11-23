@@ -75,6 +75,7 @@ class DeviceDiscoveryService extends ChangeNotifier {
     if (_disposed || _isScanning) return;
     if (!await _ensureLocalNetworkAccess()) {
       if (!_disposed) _setStatus('Local network permission is required to discover cameras.');
+      onOperation?.call('Discovery', interfaceName, 'Failed', 'Local network permission was not granted.');
       return;
     }
     if (_disposed) return;
@@ -108,6 +109,7 @@ class DeviceDiscoveryService extends ChangeNotifier {
         _closeSockets();
         _isScanning = false;
         _setStatus('No usable IPv4 socket could be opened on the active interfaces.');
+        onOperation?.call('Discovery', interfaceName, 'Failed', 'No usable IPv4 socket could be opened.');
         return;
       }
       final interfaceCount = _sockets.length;
@@ -117,10 +119,12 @@ class DeviceDiscoveryService extends ChangeNotifier {
       _closeSockets();
       _isScanning = false;
       _setStatus('Local network discovery failed: ${error.toString()}');
+      onOperation?.call('Discovery', interfaceName, 'Failed', error.toString());
     } catch (error) {
       _closeSockets();
       _isScanning = false;
       _setStatus('Could not start discovery: $error');
+      onOperation?.call('Discovery', interfaceName, 'Failed', error.toString());
     }
   }
 
@@ -421,8 +425,10 @@ class DeviceDiscoveryService extends ChangeNotifier {
       if (generation != _discoveryGeneration) return;
       _merge(updated);
       _setStatus('ONVIF information refreshed for ${device.ipAddress}.');
+      onOperation?.call('Device information refresh', device.ipAddress, 'Completed', 'ONVIF identity, capabilities and available network details refreshed.');
     } on OnvifException catch (error) {
       _setStatus('ONVIF refresh failed for ${device.ipAddress}: ${error.message}');
+      onOperation?.call('Device information refresh', device.ipAddress, 'Failed', error.message);
     } finally {
       _refreshing.remove(key);
     }
@@ -459,6 +465,7 @@ class DeviceDiscoveryService extends ChangeNotifier {
     if (_disposed || _isSubnetScanning) return;
     if (!await _ensureLocalNetworkAccess()) {
       if (!_disposed) _setStatus('Local network permission is required to scan this subnet.');
+      onOperation?.call('Subnet scan', interfaceName, 'Failed', 'Local network permission was not granted.');
       return;
     }
     if (_disposed) return;
@@ -573,7 +580,10 @@ class DeviceDiscoveryService extends ChangeNotifier {
     List<CameraDevice> devices, {
     void Function(int completed, int total, CameraDevice current)? onProgress,
   }) async {
-    if (!await _ensureLocalNetworkAccess()) return 0;
+    if (!await _ensureLocalNetworkAccess()) {
+      onOperation?.call('Reachability', '', 'Failed', 'Local network permission was not granted.');
+      return 0;
+    }
     _cancelReachability = false;
     var completed = 0;
     for (final device in devices) {
