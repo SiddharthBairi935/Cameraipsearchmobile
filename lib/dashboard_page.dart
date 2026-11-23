@@ -36,7 +36,7 @@ class DashboardPage extends StatefulWidget {
   State<DashboardPage> createState() => _DashboardPageState();
 }
 
-class _DashboardPageState extends State<DashboardPage> {
+class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserver {
   late final DeviceDiscoveryService discovery;
   final store = InventoryStore();
   final diagnostics = DiagnosticsService();
@@ -54,6 +54,7 @@ class _DashboardPageState extends State<DashboardPage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     discovery = DeviceDiscoveryService(
       onvifService: OnvifDeviceService(requestCredentials: _credentials),
       onOperation: (operation, target, outcome, details) =>
@@ -102,7 +103,16 @@ class _DashboardPageState extends State<DashboardPage> {
     }
   }
   @override
-  void dispose() { discovery.removeListener(_changed); discovery.dispose(); unawaited(store.close()); search.dispose(); super.dispose(); }
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.inactive || state == AppLifecycleState.paused || state == AppLifecycleState.detached) {
+      if (discovery.isScanning) unawaited(discovery.cancelDiscovery());
+      if (discovery.isSubnetScanning) discovery.cancelSubnetScan();
+      if (checking) discovery.cancelReachability();
+    }
+  }
+
+  @override
+  void dispose() { WidgetsBinding.instance.removeObserver(this); discovery.removeListener(_changed); discovery.dispose(); unawaited(store.close()); search.dispose(); super.dispose(); }
   NetworkInterface? get activeInterface {
     for (final item in interfaces) {
       if (item.name == interfaceName) return item;
@@ -235,7 +245,10 @@ class _DashboardPageState extends State<DashboardPage> {
       final mask = InternetAddress.fromRawAddress(Uint8List.fromList([(m>>24)&255,(m>>16)&255,(m>>8)&255,m&255]));
       await discovery.scanSubnet(ip,mask,onProgress:(done,total,candidates){ if(mounted)setState(()=>subnetProgress='Subnet: $done/$total · $candidates candidates'); });
       if(mounted)setState(()=>subnetProgress='');
-    } on FormatException catch(e) { _msg(e.message); }
+    } on FormatException catch(e) {
+      await _record('Subnet scan', interfaceName ?? '', 'Failed', e.message);
+      _msg(e.message);
+    }
   }
 
   Future<void> _reachability() async {
