@@ -19,8 +19,7 @@ class InventoryStore {
 
   Future<Database> get _db async {
     if (_database != null && _database!.isOpen) return _database!;
-    final directory = await getApplicationDocumentsDirectory();
-    final path = _databasePathOverride ?? p.join(directory.path, _databaseName);
+    final path = _databasePathOverride ?? p.join((await getApplicationDocumentsDirectory()).path, _databaseName);
     _database = await openDatabase(
       path,
       version: _databaseVersion,
