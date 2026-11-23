@@ -11,6 +11,12 @@ class OnvifDeviceService {
 
   final Future<OnvifCredentials?> Function(String host, String realm)? requestCredentials;
   final Map<String, OnvifCredentials> _sessionCredentials = {};
+  final Set<HttpClient> _activeClients = {};
+
+  void cancelActive() {
+    for (final client in _activeClients.toList()) { client.close(force: true); }
+    _activeClients.clear();
+  }
 
   static const _deviceNamespace = 'http://www.onvif.org/ver10/device/wsdl';
   static const _soapNamespace = 'http://www.w3.org/2003/05/soap-envelope';
@@ -230,6 +236,7 @@ class OnvifDeviceService {
     final uri = Uri.tryParse(device.deviceServiceUrl);
     if (uri == null || !isSafeEndpoint(device)) throw const OnvifException('Unsafe or invalid ONVIF service URL.');
     final client = HttpClient()..connectionTimeout = const Duration(seconds: 4);
+    _activeClients.add(client);
     final cached = _sessionCredentials[uri.host];
     if (cached != null) {
       client.addCredentials(uri, cached.realm, HttpClientBasicCredentials(cached.username, cached.password));
@@ -268,6 +275,7 @@ class OnvifDeviceService {
     } on FormatException {
       throw OnvifException('Camera returned malformed XML for $operation.');
     } finally {
+      _activeClients.remove(client);
       client.close(force: true);
     }
   }
