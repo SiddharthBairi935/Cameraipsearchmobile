@@ -89,7 +89,7 @@ class DeviceDiscoveryService extends ChangeNotifier {
       socket = await RawDatagramSocket.bind(localAddress, 0, reuseAddress: true);
       socket.broadcastEnabled = true;
       socket.multicastHops = 1;
-      socket.multicastInterface = localAddress;
+      socket.joinMulticast(onvifGroup, interface);
       final sequence = ++_sequence;
       _sockets.add(socket);
       _sequences[socket] = sequence;
