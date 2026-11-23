@@ -14,7 +14,9 @@ class DeviceDiscoveryService extends ChangeNotifier {
       : _onvif = onvifService ?? OnvifDeviceService();
 
   final OnvifDeviceService _onvif;
-  bool _cancelSubnet = false;\n  bool _isSubnetScanning = false;\n  bool get isSubnetScanning => _isSubnetScanning;
+  bool _cancelSubnet = false;
+  bool _isSubnetScanning = false;
+  bool get isSubnetScanning => _isSubnetScanning;\n  bool _isSubnetScanning = false;\n  bool get isSubnetScanning => _isSubnetScanning;
   bool _cancelReachability = false;
   int _discoveryGeneration = 0;
   String _selectedInterfaceName = '';
@@ -428,6 +430,7 @@ class DeviceDiscoveryService extends ChangeNotifier {
       return;
     }
     _cancelSubnet = false;
+    _isSubnetScanning = true;
     final ip = localAddress.rawAddress;
     final maskBytes = mask.rawAddress;
     if (ip.length != 4 || maskBytes.length != 4) throw const FormatException('IPv4 only.');
@@ -489,12 +492,14 @@ class DeviceDiscoveryService extends ChangeNotifier {
           }
         } finally {
           completed++;
+          onProgress?.call(completed, hosts.length, candidates);
           semaphore.release();
         }
       }());
     }
     await Future.wait(tasks);
-    _setStatus('Subnet scan complete. $candidates unverified candidate(s) found from $completed host(s).');
+    _isSubnetScanning = false;
+    _setStatus(_cancelSubnet ? 'Subnet scan cancelled after $completed host(s).' : 'Subnet scan complete. $candidates unverified candidate(s) found from $completed host(s).');
   }
 
   void cancelSubnetScan() { _cancelSubnet = true; _setStatus('Cancelling subnet scan…'); }
@@ -585,6 +590,7 @@ class DeviceDiscoveryService extends ChangeNotifier {
   }
 
   Future<void> cancelDiscovery({bool notify = true}) async {
+    _discoveryGeneration++;
     _timeout?.cancel();
     _timeout = null;
     _isScanning = false;
