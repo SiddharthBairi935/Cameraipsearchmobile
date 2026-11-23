@@ -157,6 +157,9 @@ class DeviceDiscoveryService extends ChangeNotifier {
     } on SocketException catch (error) {
       if (socket != null) { _sockets.remove(socket); socket.close(); }
       _setStatus('Could not bind ${interface.name}: ${error.message}');
+    } catch (error) {
+      if (socket != null) { _sockets.remove(socket); socket.close(); }
+      _setStatus('Could not initialize ${interface.name}: $error');
     }
   }
 
