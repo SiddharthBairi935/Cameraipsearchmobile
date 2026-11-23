@@ -102,7 +102,7 @@ class InventoryStore {
   }
 
   Future<List<OperationHistoryEntry>> loadHistory({int limit = 250}) async {
-    final rows = await (await _db).query('operation_history', columns: const ['id', 'occurred_at', 'operation', 'target', 'outcome', 'details'], orderBy: 'id DESC', limit: limit.clamp(1, maximumHistoryRecords));
+    final rows = await (await _db).query('operation_history', columns: const ['id', 'occurred_at', 'operation', 'target', 'outcome', 'details'], orderBy: 'id DESC', limit: limit.clamp(1, maximumHistoryRecords).toInt());
     return rows.map(OperationHistoryEntry.fromMap).toList(growable: false);
   }
 
