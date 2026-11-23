@@ -1,0 +1,21 @@
+# Flutter / Dart
+.dart_tool/
+.packages
+.pub-cache/
+.pub/
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+.metadata
+coverage/
+*.iml
+.idea/
+.vscode/
+# Platform build output
+android/.gradle/
+android/app/build/
+ios/Flutter/ephemeral/
+ios/Pods/
+ios/.symlinks/
+.DS_Store
+*.log
