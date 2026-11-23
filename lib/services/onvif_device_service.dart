@@ -272,6 +272,8 @@ class OnvifDeviceService {
       throw OnvifException('ONVIF $operation timed out.');
     } on SocketException catch (error) {
       throw OnvifException('ONVIF $operation network error: ${error.message}');
+    } on HttpException catch (error) {
+      throw OnvifException('ONVIF $operation HTTP transport error: ${error.message}');
     } on FormatException {
       throw OnvifException('Camera returned malformed XML for $operation.');
     } finally {
