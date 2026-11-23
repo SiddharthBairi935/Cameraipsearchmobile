@@ -1,35 +1,54 @@
-# Camera IP Search Mobile
+# Oxita Camera IP Search Mobile
 
-Flutter-based Android/iOS companion to the Camera IP Search desktop application.
+Flutter/Dart Android and iOS companion to the desktop [Camera IP Search](https://github.com/Karishma6543/camera-ip-search).
 
-The mobile client uses mobile-native navigation and layouts while preserving the desktop discovery contracts. It is a separate app, not a Qt-to-mobile UI port.
+The mobile app translates the desktop release-candidate workflows into mobile navigation, responsive cards, bottom sheets and confirmation dialogs. It is not a Qt UI copy.
 
-## Reference desktop repository
+## Desktop source of truth
 
-https://github.com/Karishma6543/camera-ip-search
+The parity target is desktop PR #4, branch `release/oxita-production-ready`:
+https://github.com/Karishma6543/camera-ip-search/pull/4
 
-The desktop reference currently uses C++20 and Qt 6. The mobile implementation is translating its protocol behavior and device model into Dart.
+Do not use desktop `main` or the older UI-only PR #2 as the current parity baseline.
 
-## Implemented in the initial mobile foundation
+## Ported desktop capabilities
 
-- ONVIF WS-Discovery probe to 239.255.255.250:3702.
-- Project firmware Contract B probe on UDP port 9988.
-- Strict response checks for magic, version, sequence, command and field types.
-- Multi-interface IPv4 discovery and device-source merging.
-- Local device inventory persistence.
-- Manual IPv4 device entry.
-- Bounded, opt-in CIDR scan (maximum 256 hosts; common camera service ports).
-- Candidate classification: an open port is not treated as proof of a camera.
-- TCP reachability check, search, device details and open-web-UI action.
-- Dark mobile-first dashboard and Flutter CI workflow.
+- ONVIF WS-Discovery and Oxita Contract B UDP discovery (port 9988).
+- Selectable active IPv4 interface for discovery.
+- ONVIF XAddr validation: HTTP(S), same responding host, no user info, query or fragment.
+- Project response validation: magic, version, command, sequence, field types and sender-IP binding; supports the explicit unconfigured-camera 0.0.0.0 sender case.
+- Device identity matching using MAC, ONVIF endpoint, serial + known manufacturer, and guarded IP fallback; conflicting MAC addresses are not merged.
+- Candidate scan observations cannot overwrite verified device identity or IP details.
+- ONVIF GetDeviceInformation, GetCapabilities, GetNetworkInterfaces and GetDNS enrichment.
+- Select the ONVIF interface whose active IPv4 address matches the discovered camera before enabling static-IP writes.
+- Bounded opt-in TCP subnet scan (maximum 256 IPv4 hosts, with a window around the selected host on larger networks), common camera ports, candidate provenance, progress and cancellation.
+- TCP reachability checks with per-device timestamps, multi-select priority and cancellation.
+- Manual IPv4 inventory entry, labels, search, manufacturer/status filters and device detail profile.
+- Guarded ONVIF static IPv4 write: local validation, explicit confirmation, SOAP response validation, new-IP verification and separate gateway result handling.
+- Local SQLite inventory, CSV export/share, app data path information and session-only ONVIF HTTP credentials.
 
-See [the parity matrix](docs/parity-matrix.md) for what is not implemented yet.
+## Deliberately unavailable (matches desktop PR #4)
+
+- CP Plus, Hikvision and Prama proprietary adapters.
+- Project-camera activation or configuration commands; Contract B currently defines discovery only.
+- Firmware upload/update, reboot, NVR channel management and bulk image configuration.
+- DHCP toggle and DNS write configuration.
+- ONVIF WS-Security and secure OS credential-vault integration.
+- Any write operation without a verified adapter contract and recovery path.
+
+Unavailable desktop features are represented as unavailable in the mobile app, not as fake active controls.
+
+## Platform requirements
+
+### Android
+Run `bash tool/bootstrap_platforms.sh` to generate standard Android/iOS runners and the Android local-network permission bridge. The bridge requests `ACCESS_LOCAL_NETWORK` when running on Android 17/API 37 and manages the Wi-Fi multicast lock. Confirm targetSdk and test discovery on physical Android devices and different Wi-Fi access points.
+
+### iOS
+The bootstrap script adds `NSLocalNetworkUsageDescription`. ONVIF UDP multicast/broadcast also requires Apple's multicast networking entitlement and an authorized provisioning profile. Request the entitlement from Apple and validate an entitled physical-device build before claiming iOS discovery parity. Without it, iOS may not receive ONVIF multicast replies.
 
 ## Setup
 
-Requirements: Flutter stable SDK and Android Studio / Xcode for the relevant target.
-
-The initial repository contains the Dart application layer. Generate standard Android and iOS runner projects once:
+Requirements: Flutter stable, Android Studio for Android, Xcode/macOS for iOS.
 
 ```bash
 bash tool/bootstrap_platforms.sh
@@ -39,22 +58,8 @@ flutter test
 flutter run
 ```
 
-The bootstrap script generates platform runner folders without replacing the app's pubspec or Dart source.
+## Validation status
 
-## Platform networking requirements
+Automated Dart tests and Flutter CI are configured. A green workflow is not proof of camera interoperability. Hardware validation must record exact camera model, hardware revision, firmware, network topology and the operations tested.
 
-- Android: the platform bootstrap script adds the ACCESS_LOCAL_NETWORK manifest declaration and a native runtime request bridge for Android 17 (API 37), plus the Wi-Fi multicast lock. Confirm targetSdk is set appropriately before shipping against API 37. Test Wi-Fi broadcast/multicast on physical devices.
-- iOS: add NSLocalNetworkUsageDescription to Runner/Info.plist. UDP multicast and broadcast require Apple's com.apple.developer.networking.multicast entitlement and an authorized provisioning profile. The entitlement must be requested from Apple; it cannot be assumed.
-- Until these platform-specific requirements are satisfied and tested, do not claim feature parity on iOS.
-
-## Safety and compatibility
-
-- Discovery is limited to directly connected IPv4 interfaces.
-- Subnet scanning is user initiated, bounded and non-intrusive.
-- Unknown devices and TCP scan candidates are labelled honestly.
-- No default passwords, credential guessing or undocumented vendor commands.
-- Network configuration, activation, batch operations and firmware updates stay unavailable until their exact protocol, authentication, confirmation and verification flows are implemented and hardware-tested.
-
-## Quality gates
-
-CI runs `flutter analyze` and `flutter test`. Physical-camera compatibility is tracked separately from automated tests. A feature is hardware-tested only when the exact model, hardware revision and firmware version are recorded.
+Desktop PR #4 itself is still a draft release candidate and is **not production ready**: its validation notes say cross-platform build/test, real-camera checks, security review and release packaging remain open. Mobile parity must preserve those same evidence levels rather than overstate support.
