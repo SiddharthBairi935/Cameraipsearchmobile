@@ -1,7 +1,7 @@
 import 'dart:async';
-import 'dart:collection';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -84,14 +84,14 @@ class DeviceDiscoveryService extends ChangeNotifier {
         includeLinkLocal: true,
         includeLoopback: false,
       );
-      if (generation != _discoveryGeneration) return;
+      if (generation != _discoveryGeneration) { return; }
       await _acquireMulticastLock();
       if (generation != _discoveryGeneration) { _closeSockets(); return; }
       for (final interface in interfaces) {
-        if (generation != _discoveryGeneration) return;
+        if (generation != _discoveryGeneration) { return; }
         if (interfaceName.isNotEmpty && interface.name != interfaceName) continue;
         for (final address in interface.addresses) {
-          if (generation != _discoveryGeneration) return;
+          if (generation != _discoveryGeneration) { return; }
           if (address.type != InternetAddressType.IPv4 ||
               address.isLoopback) continue;
           await _openInterface(interface, address, generation);
@@ -110,7 +110,7 @@ class DeviceDiscoveryService extends ChangeNotifier {
     } on SocketException catch (error) {
       _closeSockets();
       _isScanning = false;
-      _setStatus('Local network discovery failed: ${error.message}');
+      _setStatus('Local network discovery failed: ${error.toString()}');
     } catch (error) {
       _closeSockets();
       _isScanning = false;
@@ -208,7 +208,7 @@ class DeviceDiscoveryService extends ChangeNotifier {
           root['version'] != 1 ||
           root['seq'] != expectedSequence ||
           root['cmd'] != 'PROBE_RESPONSE' ||
-          root['device'] is! Map<String, dynamic>) return null;
+          root['device'] is! Map<String, dynamic>) { return null; }
       final device = root['device'] as Map<String, dynamic>;
       for (final key in ['mac', 'ipv4', 'netmask', 'gateway', 'dns', 'soc', 'firmware_version']) {
         if (device[key] != null && device[key] is! String) return null;
@@ -482,9 +482,9 @@ class DeviceDiscoveryService extends ChangeNotifier {
     final tasks = <Future<void>>[];
     final semaphore = _AsyncSemaphore(24);
     for (final host in hosts) {
-      final address = InternetAddress.fromRawAddress([
+      final address = InternetAddress.fromRawAddress(Uint8List.fromList([
         (host >> 24) & 255, (host >> 16) & 255, (host >> 8) & 255, host & 255,
-      ]);
+      ]));
       tasks.add(() async {
         await semaphore.acquire();
         try {
