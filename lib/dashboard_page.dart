@@ -137,10 +137,12 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
       );
       if (mounted) setState(() => nativeInterfaceDetails = details);
     } catch (error) {
-      if (mounted) setState(() => nativeInterfaceDetails = {
-        'available': false,
-        'error': error.toString(),
-      });
+      if (mounted) {
+        setState(() => nativeInterfaceDetails = {
+          'available': false,
+          'error': error.toString(),
+        });
+      }
       await diagnostics.log('warning', 'Native interface diagnostics unavailable: $error');
     }
   }
@@ -332,6 +334,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
     if (error != null) { _msg(error); return; }
     if (!mounted) return;
     await _record('Static IPv4 preview', d.ipAddress, 'Validated', 'Local validation passed for proposed address ${values[0]}; no camera request was sent.');
+    if (!mounted) return;
     await showDialog<void>(context: context, builder: (context) => AlertDialog(
       title: const Text('Static IPv4 preview'),
       content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
