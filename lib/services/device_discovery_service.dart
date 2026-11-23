@@ -204,16 +204,12 @@ class DeviceDiscoveryService extends ChangeNotifier {
       final rawMac = (device['mac'] as String? ?? '').trim().toUpperCase().replaceAll('-', ':');
       final mac = RegExp(r'^[0-9A-F]{2}(:[0-9A-F]{2}){5}$').hasMatch(rawMac) ? rawMac : '';
       final advertisedIp = InternetAddress.tryParse(device['ipv4'] as String? ?? '');
-      if (advertisedIp != null &&
-          (advertisedIp.type != InternetAddressType.IPv4 ||
-           advertisedIp.isLoopback || advertisedIp.isMulticast ||
-           advertisedIp.address == '0.0.0.0' || advertisedIp.address == '255.255.255.255')) {
-        if (sender.address != '0.0.0.0') return null;
-      }
+      final usableAdvertised = advertisedIp != null && advertisedIp.type == InternetAddressType.IPv4 &&
+          !advertisedIp.isLoopback && !advertisedIp.isMulticast &&
+          advertisedIp.address != '0.0.0.0' && advertisedIp.address != '255.255.255.255';
       final senderIsUnconfigured = sender.address == '0.0.0.0';
-      if (!senderIsUnconfigured && advertisedIp != null &&
-          advertisedIp.address != sender.address) return null;
-      final ip = senderIsUnconfigured ? (advertisedIp?.address ?? '') : sender.address;
+      if (!senderIsUnconfigured && usableAdvertised && advertisedIp.address != sender.address) return null;
+      final ip = senderIsUnconfigured ? (usableAdvertised ? advertisedIp.address : '') : sender.address;
       if (ip.isEmpty || ip == '0.0.0.0' || ip == '255.255.255.255') return null;
       return CameraDevice(
         id: mac.isNotEmpty ? mac : ip,
@@ -306,7 +302,7 @@ class DeviceDiscoveryService extends ChangeNotifier {
         if (!conflict && known.onvifEndpoint.toLowerCase() == observation.onvifEndpoint.toLowerCase()) return entry.key;
       }
     }
-    if (observation.serialNumber.isNotEmpty && observation.manufacturer.isNotEmpty) {
+    if (observation.serialNumber.isNotEmpty && _known(observation.manufacturer)) {
       for (final entry in _devices.entries) {
         final known = entry.value;
         final conflict = mac.isNotEmpty && known.macAddress.isNotEmpty &&
@@ -371,9 +367,9 @@ class DeviceDiscoveryService extends ChangeNotifier {
         isCandidate: verified ? false : existing.isCandidate,
         openPorts: {...existing.openPorts, ...incoming.openPorts}.toList()..sort(),
         lastSeen: incoming.lastSeen ?? DateTime.now(),
-        reachabilityStatus: existing.reachabilityStatus == 'Not checked' ? incoming.reachabilityStatus : existing.reachabilityStatus,
-        reachabilityCheckedAt: existing.reachabilityCheckedAt.isEmpty ? incoming.reachabilityCheckedAt : existing.reachabilityCheckedAt,
-        lastSuccessfulResponseAt: existing.lastSuccessfulResponseAt.isEmpty ? incoming.lastSuccessfulResponseAt : existing.lastSuccessfulResponseAt,
+        reachabilityStatus: incoming.reachabilityCheckedAt.isNotEmpty ? incoming.reachabilityStatus : existing.reachabilityStatus,
+        reachabilityCheckedAt: incoming.reachabilityCheckedAt.isNotEmpty ? incoming.reachabilityCheckedAt : existing.reachabilityCheckedAt,
+        lastSuccessfulResponseAt: incoming.lastSuccessfulResponseAt.isNotEmpty ? incoming.lastSuccessfulResponseAt : existing.lastSuccessfulResponseAt,
       );
     }
     notifyListeners();
@@ -392,7 +388,9 @@ class DeviceDiscoveryService extends ChangeNotifier {
     if (key.isEmpty || !_refreshing.add(key)) return;
     _setStatus('Refreshing ONVIF information for ${device.ipAddress}…');
     try {
+      final generation = _discoveryGeneration;
       final updated = await _onvif.refresh(device);
+      if (generation != _discoveryGeneration) return;
       _merge(updated);
       _setStatus('ONVIF information refreshed for ${device.ipAddress}.');
     } on OnvifException catch (error) {
@@ -591,6 +589,7 @@ class DeviceDiscoveryService extends ChangeNotifier {
 
   Future<void> cancelDiscovery({bool notify = true}) async {
     _discoveryGeneration++;
+    _onvif.cancelActive();
     _timeout?.cancel();
     _timeout = null;
     _isScanning = false;
