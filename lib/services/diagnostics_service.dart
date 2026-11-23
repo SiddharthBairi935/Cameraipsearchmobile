@@ -6,7 +6,9 @@ import 'package:path_provider/path_provider.dart';
 import '../models/operation_history_entry.dart';
 import 'sensitive_data_redactor.dart';
 
-class DiagnosticsService({Directory? logDirectory}) : _logDirectoryOverride = logDirectory;
+class DiagnosticsService {
+  DiagnosticsService({Directory? logDirectory}) : _logDirectoryOverride = logDirectory;
+
   final Directory? _logDirectoryOverride;
 
   static const maxLogBytes = 2 * 1024 * 1024;
