@@ -78,7 +78,11 @@ class OnvifDeviceService {
 
     try {
       final dns = await _post(updated, 'GetDNS');
-      final dnsAddress = _firstText(dns, const {'IPv4Address', 'IPv4'});
+      final manualDns = _firstElement(dns, 'DNSManual');
+      final dhcpDns = _firstElement(dns, 'DNSFromDHCP');
+      final manualDnsAddress = manualDns == null ? '' : _text(manualDns, 'IPv4Address');
+      final dhcpDnsAddress = dhcpDns == null ? '' : _text(dhcpDns, 'IPv4Address');
+      final dnsAddress = manualDnsAddress.isNotEmpty ? manualDnsAddress : dhcpDnsAddress;
       if (dnsAddress.isNotEmpty) {
         updated = updated.copyWith(
           ipv4DnsServer: dnsAddress,
@@ -116,12 +120,21 @@ class OnvifDeviceService {
       final manual = config == null ? null : _firstElement(config, 'Manual');
       final fromDhcp = config == null ? null : _firstElement(config, 'FromDHCP');
       final linkLocal = config == null ? null : _firstElement(config, 'LinkLocal');
-      final gateway = config == null ? '' : _text(config, 'IPv4Address');
+      final manualAddress = manual == null ? '' : _text(manual, 'Address');
+      final dhcpAddress = fromDhcp == null ? '' : _text(fromDhcp, 'Address');
+      final linkLocalAddress = linkLocal == null ? '' : _text(linkLocal, 'Address');
+      final manualPrefix = manual == null ? '' : _text(manual, 'PrefixLength');
+      final dhcpPrefix = fromDhcp == null ? '' : _text(fromDhcp, 'PrefixLength');
+      final linkLocalPrefix = linkLocal == null ? '' : _text(linkLocal, 'PrefixLength');
+      final gatewayElement = config == null ? null : _firstElement(config, 'Gateway');
+      final chosenGateway = gatewayElement == null ? '' : _text(gatewayElement, 'IPv4Address');
       final active = dhcp.toLowerCase() == 'true' || dhcp == '1';
-      final source = active ? (fromDhcp ?? linkLocal ?? manual) : (manual ?? linkLocal ?? fromDhcp);
-      final address = source == null ? '' : _text(source, 'Address');
-      final prefix = source == null ? '' : _text(source, 'PrefixLength');
-      final chosenGateway = gateway.isNotEmpty ? gateway : _text(config ?? item, 'IPv4Address');
+      final address = active
+          ? (dhcpAddress.isNotEmpty ? dhcpAddress : (linkLocalAddress.isNotEmpty ? linkLocalAddress : manualAddress))
+          : (manualAddress.isNotEmpty ? manualAddress : (linkLocalAddress.isNotEmpty ? linkLocalAddress : dhcpAddress));
+      final prefix = active
+          ? (dhcpPrefix.isNotEmpty ? dhcpPrefix : (linkLocalPrefix.isNotEmpty ? linkLocalPrefix : manualPrefix))
+          : (manualPrefix.isNotEmpty ? manualPrefix : (linkLocalPrefix.isNotEmpty ? linkLocalPrefix : dhcpPrefix));
       final summary = [name, address, mac].where((s) => s.isNotEmpty).join(' | ');
       if (summary.isNotEmpty) summaries.add(summary);
       if (selected == null && token.isNotEmpty && address == device.ipAddress) {
