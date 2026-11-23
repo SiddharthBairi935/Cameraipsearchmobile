@@ -168,14 +168,14 @@ class _DashboardPageState extends State<DashboardPage> {
 
   Future<void> _manual() async {
     final value = await _ask('Add device manually','Camera IPv4 address',hint:'192.168.1.100');
-    if (value == null) return;
+    if (value == null || !mounted) return;
     try { await discovery.addManualDevice(value); } on FormatException catch(e) { _msg(e.message); }
   }
 
   Future<void> _subnet() async {
     if (discovery.isSubnetScanning) { discovery.cancelSubnetScan(); return; }
     final value = await _ask('Scan selected subnet','Selected interface IPv4 / prefix',initial:_defaultSubnetCidr(),hint:'192.168.1.20/24');
-    if (value == null) return;
+    if (value == null || !mounted) return;
     try {
       final p = value.split('/'), ip = InternetAddress.tryParse(p.first), prefix = p.length == 2 ? int.tryParse(p[1]) : null;
       if (activeInterface == null) throw const FormatException('Select an active network interface first.');
@@ -295,7 +295,7 @@ class _DashboardPageState extends State<DashboardPage> {
       actions:[TextButton(onPressed:()=>Navigator.pop(context),child:const Text('Cancel')),
         FilledButton(onPressed:()=>Navigator.pop(context,[ip.text,mask.text,gw.text]),child:const Text('Review'))]));
     ip.dispose();mask.dispose();gw.dispose();
-    if(values==null)return;
+    if(values==null || !mounted)return;
     final validation = NetworkConfigValidator.validateStaticIpv4(address: values[0], subnetMask: values[1], gateway: values[2]);
     if (validation != null) { _msg(validation); return; }
     final ok=await showDialog<bool>(context:context,builder:(context)=>AlertDialog(
