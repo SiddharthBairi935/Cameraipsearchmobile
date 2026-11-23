@@ -17,7 +17,9 @@ void main() {
 
   test('rotates oversized logs and retains the previous log', () async {
     final service = DiagnosticsService(logDirectory: Directory('${root.path}/logs'));
-    await service.log('info', 'x' * (DiagnosticsService.maxLogBytes + 64));
+    for (var i = 0; i < 270; i++) {
+      await service.log('info', 'x' * 8192);
+    }
     await service.log('info', 'second log entry');
     final current = File('${root.path}/logs/application.log');
     final archive = File('${root.path}/logs/application.log.1');
