@@ -459,7 +459,21 @@ class DeviceDiscoveryService extends ChangeNotifier {
         labels.every((label) =>
             label.isNotEmpty &&
             label.length <= 63 &&
-            RegExp(r'^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?
+            RegExp(r'^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$')
+                .hasMatch(label));
+    if (!validIp && !validHostname) {
+      throw const FormatException(
+        'Enter a valid IP address or hostname (for example, 192.168.1.100 or camera.local).',
+      );
+    }
+    final normalized = parsed?.address ?? hostname.toLowerCase();
+    _merge(CameraDevice(
+      id: normalized,
+      ipAddress: normalized,
+      discoverySources: const ['Manual'],
+      lastSeen: DateTime.now(),
+    ));
+  }
 
   Future<void> scanSubnet(InternetAddress localAddress, InternetAddress mask, {String interfaceName = '', void Function(int completed, int total, int candidates)? onProgress}) async {
     if (_disposed || _isSubnetScanning) return;
