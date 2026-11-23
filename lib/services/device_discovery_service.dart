@@ -16,7 +16,7 @@ class DeviceDiscoveryService extends ChangeNotifier {
   final OnvifDeviceService _onvif;
   bool _cancelSubnet = false;
   bool _isSubnetScanning = false;
-  bool get isSubnetScanning => _isSubnetScanning;\n  bool _isSubnetScanning = false;\n  bool get isSubnetScanning => _isSubnetScanning;
+  bool get isSubnetScanning => _isSubnetScanning;
   bool _cancelReachability = false;
   int _discoveryGeneration = 0;
   String _selectedInterfaceName = '';
