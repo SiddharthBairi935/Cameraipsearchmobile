@@ -1,6 +1,6 @@
-# Desktop PR #4 → Mobile parity matrix
+# Desktop PR #5 → Mobile parity matrix
 
-Source of truth: https://github.com/Karishma6543/camera-ip-search/pull/4 (`release/oxita-production-ready`).
+Source of truth: https://github.com/Karishma6543/camera-ip-search/pull/5 (`release/preproduction-hardening`), stacked on PR #4.
 
 Status distinguishes a mobile code path from verified physical-device behavior.
 
@@ -16,7 +16,14 @@ Status distinguishes a mobile code path from verified physical-device behavior.
 | ONVIF GetCapabilities | Implemented | Device, Media, PTZ, Imaging, Events, Analytics, Extension |
 | ONVIF GetNetworkInterfaces | Implemented | Match current camera IP before exposing write token |
 | ONVIF GetDNS | Implemented | Read-only DNS reporting |
-| Local SQLite inventory | Implemented | Device records persisted locally |
+| Local SQLite inventory | Implemented | Device records persisted locally; `PRAGMA quick_check` before schema callbacks; invalid DB is not intentionally overwritten |
+| Persistent Operation History | Implemented | Latest 1,000 events retained; latest 250 shown; sensitive-looking values redacted |
+| Rotating application logs | Implemented | 2 MiB active log, three archives; best-effort credential redaction |
+| User-confirmed diagnostic bundle | Implemented | OS/runtime, interface summary, recent history and redacted logs; no DB file or ONVIF interface tokens; preview before share |
+| Simulator protocol fixtures | Implemented in tests | Dart fixtures mirror desktop Contract B and limited ONVIF scenarios; no production simulator server embedded |
+| Cancellation history | Implemented | Discovery, subnet scan and reachability record Completed/Cancelled outcomes |
+| Background cancellation | Implemented | App cancels active scans when it becomes inactive/paused/detached |
+| Manual IP / hostname entry | Implemented | Validated IP addresses and DNS hostnames |
 | Manual device entry / labels | Implemented | IPv4 manual entry and user label |
 | Search and filters | Implemented | IP/MAC/model/serial/label, manufacturer and status |
 | CSV export | Implemented | Shares filtered inventory with extended device columns |
@@ -42,10 +49,21 @@ Status distinguishes a mobile code path from verified physical-device behavior.
 
 ## Quality gates
 
-1. `flutter pub get`, `flutter analyze`, `flutter test`.
+1. `flutter pub get`, `flutter analyze`, `flutter test`, Android debug APK compilation.
 2. Parser fixtures for ONVIF ProbeMatch and Contract B malformed/host-mismatch cases.
 3. Android real-device discovery across Wi-Fi and Ethernet/USB tethering where supported.
 4. iOS entitled physical-device discovery.
 5. ONVIF read operations on exact camera models/firmware.
 6. Static IPv4 writes on supported models, including rejected writes, reboot-needed responses, address verification and gateway partial failure.
-7. Record model, hardware revision, firmware, topology and test evidence. A code path alone is not hardware support.
+7. Verify SQLite migration/integrity on upgrade and corrupted-database scenarios on physical Android/iOS devices.
+8. Inspect diagnostic exports on both platforms and run a manual secret-redaction review.
+9. Record model, hardware revision, firmware, topology and test evidence. A code path alone is not hardware support.
+
+
+## PR #5 hardening parity
+
+- Mobile Operation History stores the last 1,000 local operations and displays the latest 250.
+- Mobile diagnostics rotate the active log at 2 MiB and retain three archives. The support bundle excludes the inventory database and ONVIF interface tokens and is previewed before sharing.
+- SQLite integrity is checked with `PRAGMA quick_check` in the connection configuration before create/upgrade callbacks. Version 1 inventory databases are upgraded to add history without deleting device rows.
+- Desktop Python simulator scenarios are represented by deterministic Dart wire fixtures and parser tests. A production embedded simulator is intentionally not included in the mobile app.
+- Application lifecycle transitions cancel active discovery, subnet scanning and reachability work; outcomes are written to history when the asynchronous operation completes.
