@@ -203,10 +203,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
   Future<void> _refreshDevice(CameraDevice device) async {
     try {
       await discovery.refreshDeviceInfo(device);
-      await _record('Device information refresh', device.ipAddress, 'Completed',
-          'ONVIF identity, capabilities and available network details refreshed.');
     } catch (error) {
-      await _record('Device information refresh', device.ipAddress, 'Failed', error.toString());
       _msg('Device refresh failed: $error');
     }
   }
