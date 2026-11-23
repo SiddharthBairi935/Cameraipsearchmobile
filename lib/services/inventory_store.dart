@@ -9,6 +9,9 @@ import '../models/operation_history_entry.dart';
 import 'sensitive_data_redactor.dart';
 
 class InventoryStore {
+  InventoryStore({String? databasePath}) : _databasePathOverride = databasePath;
+  final String? _databasePathOverride;
+
   static const _databaseName = 'oxita_camera_inventory.db';
   static const _databaseVersion = 2;
   static const maximumHistoryRecords = 1000;
@@ -17,7 +20,7 @@ class InventoryStore {
   Future<Database> get _db async {
     if (_database != null && _database!.isOpen) return _database!;
     final directory = await getApplicationDocumentsDirectory();
-    final path = p.join(directory.path, _databaseName);
+    final path = _databasePathOverride ?? p.join(directory.path, _databaseName);
     _database = await openDatabase(
       path,
       version: _databaseVersion,
