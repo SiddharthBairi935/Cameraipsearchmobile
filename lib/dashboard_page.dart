@@ -211,7 +211,7 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   Future<void> _manual() async {
-    final value = await _ask('Add device manually','Camera IPv4 address',hint:'192.168.1.100');
+    final value = await _ask('Add device manually','Camera IP address or hostname',hint:'192.168.1.100 or camera.local');
     if (value == null || !mounted) return;
     try {
       await discovery.addManualDevice(value);
