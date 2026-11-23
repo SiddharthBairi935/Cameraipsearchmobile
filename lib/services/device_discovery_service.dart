@@ -107,9 +107,11 @@ class DeviceDiscoveryService extends ChangeNotifier {
       _setStatus('Sending ONVIF and project-camera probes on $interfaceCount interface address(es)…');
       _timeout = Timer(const Duration(seconds: 6), () { if (generation == _discoveryGeneration) _finishDiscovery(); });
     } on SocketException catch (error) {
+      _closeSockets();
       _isScanning = false;
       _setStatus('Local network discovery failed: ${error.message}');
     } catch (error) {
+      _closeSockets();
       _isScanning = false;
       _setStatus('Could not start discovery: $error');
     }
@@ -144,7 +146,7 @@ class DeviceDiscoveryService extends ChangeNotifier {
       _sendOnvifProbe(socket);
       _sendProjectProbe(socket, sequence);
     } on SocketException catch (error) {
-      socket?.close();
+      if (socket != null) { _sockets.remove(socket); socket.close(); }
       _setStatus('Could not bind ${interface.name}: ${error.message}');
     }
   }
