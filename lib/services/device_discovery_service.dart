@@ -131,7 +131,7 @@ class DeviceDiscoveryService extends ChangeNotifier {
         // Some mobile builds (notably iOS without Apple's multicast entitlement)
         // cannot join multicast. Keep the socket alive for any permitted unicast
         // or project probe path and report the platform limitation.
-        _setStatus('ONVIF multicast unavailable on ${interface.name}: ${error.message}');
+        _setStatus('ONVIF multicast unavailable on ${interface.name}: ${error}');
       }
       final sequence = ++_sequence;
       _sockets.add(openedSocket);
