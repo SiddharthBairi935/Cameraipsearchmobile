@@ -285,8 +285,12 @@ class OnvifDeviceService {
       '<s:Envelope xmlns:s="$_soapNamespace" xmlns:tds="$_deviceNamespace" '
       'xmlns:tt="http://www.onvif.org/ver10/schema"><s:Body><tds:$operation>$body</tds:$s:Body></s:Envelope>';
 
-  static XmlElement? _firstElement(XmlNode root, String localName) =>
-      root.descendants.whereType<XmlElement>().where((e) => e.name.local == localName).firstOrNull;
+  static XmlElement? _firstElement(XmlNode root, String localName) {
+    for (final element in root.descendants.whereType<XmlElement>()) {
+      if (element.name.local == localName) return element;
+    }
+    return null;
+  }
 
   static String _text(XmlNode root, String localName) =>
       _firstElement(root, localName)?.innerText.trim() ?? '';
