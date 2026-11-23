@@ -80,6 +80,7 @@ class DeviceDiscoveryService extends ChangeNotifier {
     try {
       final interfaces = await NetworkInterface.list(
         type: InternetAddressType.IPv4,
+        includeLinkLocal: true,
         includeLoopback: false,
       );
       await _acquireMulticastLock();
