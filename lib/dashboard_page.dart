@@ -243,7 +243,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
       if (!activeInterface!.addresses.any((a) => a.address == ip.address)) throw const FormatException('The CIDR address must belong to the selected network interface.');
       final m = (0xffffffff << (32-prefix)) & 0xffffffff;
       final mask = InternetAddress.fromRawAddress(Uint8List.fromList([(m>>24)&255,(m>>16)&255,(m>>8)&255,m&255]));
-      await discovery.scanSubnet(ip,mask,onProgress:(done,total,candidates){ if(mounted)setState(()=>subnetProgress='Subnet: $done/$total · $candidates candidates'); });
+      await discovery.scanSubnet(ip,mask,interfaceName: interfaceName ?? '',onProgress:(done,total,candidates){ if(mounted)setState(()=>subnetProgress='Subnet: $done/$total · $candidates candidates'); });
       if(mounted)setState(()=>subnetProgress='');
     } on FormatException catch(e) {
       await _record('Subnet scan', interfaceName ?? '', 'Failed', e.message);
