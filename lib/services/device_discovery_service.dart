@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:xml/xml.dart';
 
 import '../models/camera_device.dart';
@@ -370,6 +371,20 @@ class DeviceDiscoveryService extends ChangeNotifier {
       }
     }
     return 'No response';
+  }
+
+  Future<bool> _ensureLocalNetworkAccess() async {
+    if (!Platform.isAndroid) return true;
+    try {
+      const channel = MethodChannel('com.oxita.camera_ip_search_mobile/local_network');
+      return await channel.invokeMethod<bool>('requestLocalNetworkPermission') ?? false;
+    } on PlatformException catch (error) {
+      _setStatus('Could not request local network permission: ${error.message ?? error.code}');
+      return false;
+    } on MissingPluginException {
+      // Android runner must be generated with tool/bootstrap_platforms.sh.
+      return false;
+    }
   }
 
   void _finishDiscovery() {
