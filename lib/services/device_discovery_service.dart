@@ -86,12 +86,15 @@ class DeviceDiscoveryService extends ChangeNotifier {
       await _acquireMulticastLock();
       var interfaceCount = 0;
       for (final interface in interfaces) {
+        if (generation != _discoveryGeneration) return;
         if (interfaceName.isNotEmpty && interface.name != interfaceName) continue;
         for (final address in interface.addresses) {
+          if (generation != _discoveryGeneration) return;
           if (address.type != InternetAddressType.IPv4 ||
               address.isLoopback ||
               address.isLinkLocal) continue;
           await _openInterface(interface, address);
+          if (generation != _discoveryGeneration) { _closeSockets(); return; }
           interfaceCount++;
         }
       }
