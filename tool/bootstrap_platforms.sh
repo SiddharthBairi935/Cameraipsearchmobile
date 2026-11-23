@@ -148,7 +148,7 @@ if plist.exists():
 app_delegate = Path("ios/Runner/AppDelegate.swift")
 if app_delegate.exists():
     content = app_delegate.read_text()
-    if "network_diagnostics" not in content:
+    if "getNetworkInterfaceDetails" not in content:
         content = content.replace("import UIKit", "import UIKit\nimport Darwin")
         marker = "    GeneratedPluginRegistrant.register(with: self)"
         handler = '''
