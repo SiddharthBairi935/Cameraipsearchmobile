@@ -6,11 +6,17 @@ import 'package:path_provider/path_provider.dart';
 import '../models/operation_history_entry.dart';
 import 'sensitive_data_redactor.dart';
 
-class DiagnosticsService {
+class DiagnosticsService({Directory? logDirectory}) : _logDirectoryOverride = logDirectory;
+  final Directory? _logDirectoryOverride;
+
   static const maxLogBytes = 2 * 1024 * 1024;
   static const retainedArchives = 3;
 
   Future<Directory> _logDirectory() async {
+    if (_logDirectoryOverride != null) {
+      if (!await _logDirectoryOverride!.exists()) await _logDirectoryOverride!.create(recursive: true);
+      return _logDirectoryOverride!;
+    }
     final root = await getApplicationSupportDirectory();
     final directory = Directory(p.join(root.path, 'logs'));
     if (!await directory.exists()) await directory.create(recursive: true);
