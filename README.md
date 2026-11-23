@@ -33,7 +33,7 @@ Do not use desktop `main` or the older UI-only PR #2 as the current parity basel
 - Project-camera activation or configuration commands; Contract B currently defines discovery only.
 - Firmware upload/update, reboot, NVR channel management and bulk image configuration.
 - DHCP toggle and DNS write configuration.
-- ONVIF WS-Security and secure OS credential-vault integration.
+- ONVIF HTTP Basic and Digest (MD5 / MD5-sess with qop=auth) challenge authentication is supported with session-only credentials. Digest SHA-256, qop=auth-int, ONVIF WS-Security and secure OS credential-vault integration are not implemented.
 - Any write operation without a verified adapter contract and recovery path.
 
 Unavailable desktop features are represented as unavailable in the mobile app, not as fake active controls.
