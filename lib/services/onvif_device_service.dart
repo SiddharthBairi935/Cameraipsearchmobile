@@ -381,7 +381,11 @@ class OnvifDeviceService {
     } else {
       digestResponse = _md5('$ha1:$nonce:$ha2');
     }
-    String quote(String value) => '"${value.replaceAll(r'\\', r'\\\\').replaceAll('"', r'\"')}"';
+    String quote(String value) {
+      final slash = String.fromCharCode(92);
+      final escaped = value.replaceAll(slash, slash + slash).replaceAll('"', slash + '"');
+      return '"' + escaped + '"';
+    }
     final fields = <String>[
       'username=${quote(credentials.username)}',
       'realm=${quote(realm)}',
