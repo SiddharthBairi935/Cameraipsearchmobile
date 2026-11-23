@@ -319,7 +319,7 @@ class _DashboardPageState extends State<DashboardPage> {
     ]))),
     _detail('Platform',Platform.operatingSystem),_detail('Active interface',interfaceName??'Not selected'),
     _detail('Saved devices','${discovery.devices.length}'),_detail('Version','0.2.0'),
-    _tool(Icons.file_download,'Export inventory','Share the current inventory as CSV.',_export),
+    _tool(Icons.file_download,'Export inventory','Share the current inventory as CSV.',()=>unawaited(_export())),
     const SizedBox(height:12),const Text('iOS multicast/broadcast requires Apple multicast entitlement and physical-device validation. Android local-network permissions are handled by the native bootstrap runner.',style:TextStyle(color:muted,fontSize:12)),
   ]));
 
