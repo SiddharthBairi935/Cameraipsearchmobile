@@ -1,7 +1,7 @@
 name: camera_ip_search_mobile
 description: Mobile companion for the Oxita Camera IP Search device manager.
 publish_to: "none"
-version: 0.2.0+2
+version: 0.3.0+3
 environment:
   sdk: ">=3.4.0 <4.0.0"
 dependencies:
