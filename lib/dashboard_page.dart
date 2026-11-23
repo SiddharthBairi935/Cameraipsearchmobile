@@ -296,6 +296,8 @@ class _DashboardPageState extends State<DashboardPage> {
         FilledButton(onPressed:()=>Navigator.pop(context,[ip.text,mask.text,gw.text]),child:const Text('Review'))]));
     ip.dispose();mask.dispose();gw.dispose();
     if(values==null)return;
+    final validation = NetworkConfigValidator.validateStaticIpv4(address: values[0], subnetMask: values[1], gateway: values[2]);
+    if (validation != null) { _msg(validation); return; }
     final ok=await showDialog<bool>(context:context,builder:(context)=>AlertDialog(
       title:const Text('Confirm network change'),
       content:Text('Apply ${values[0]} / ${values[1]} to ${d.ipAddress}? The app will verify the new IP before updating inventory.'),
