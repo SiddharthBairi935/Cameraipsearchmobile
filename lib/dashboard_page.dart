@@ -78,7 +78,7 @@ class _DashboardPageState extends State<DashboardPage> {
 
   void _changed() { if (mounted) setState(() {}); if (!loading) unawaited(store.save(discovery.devices)); }
   @override
-  void dispose() { discovery.removeListener(_changed); discovery.dispose(); store.close(); search.dispose(); super.dispose(); }
+  void dispose() { discovery.removeListener(_changed); discovery.dispose(); unawaited(store.close()); search.dispose(); super.dispose(); }
   NetworkInterface? get activeInterface {
     for (final item in interfaces) {
       if (item.name == interfaceName) return item;
