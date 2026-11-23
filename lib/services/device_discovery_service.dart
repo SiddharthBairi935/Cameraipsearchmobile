@@ -94,7 +94,14 @@ class DeviceDiscoveryService extends ChangeNotifier {
       socket = await RawDatagramSocket.bind(localAddress, 0, reuseAddress: true);
       socket.broadcastEnabled = true;
       socket.multicastHops = 1;
-      socket.joinMulticast(onvifGroup, interface);
+      try {
+        socket.joinMulticast(onvifGroup, interface);
+      } on SocketException catch (error) {
+        // Some mobile builds (notably iOS without Apple's multicast entitlement)
+        // cannot join multicast. Keep the socket alive for any permitted unicast
+        // or project probe path and report the platform limitation.
+        _setStatus('ONVIF multicast unavailable on ${interface.name}: ${error.message}');
+      }
       final sequence = ++_sequence;
       _sockets.add(socket);
       socket.listen((event) {
