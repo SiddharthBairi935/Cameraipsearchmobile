@@ -51,13 +51,12 @@ void main() {
   group('ONVIF ProbeMatch parser', () {
     const xml = '''
       <e:Envelope xmlns:e="http://www.w3.org/2003/05/soap-envelope"
-        xmlns:d="http://schemas.xmlsoap.org/ws/2005/04/discovery">
+        xmlns:d="http://schemas.xmlsoap.org/ws/2005/04/discovery"
+        xmlns:wsa="http://schemas.xmlsoap.org/ws/2004/08/addressing">
         <e:Body><d:ProbeMatches><d:ProbeMatch>
-          <d:EndpointReference><d:Address>urn:uuid:camera-40</d:Address></d:EndpointReference>
-          <d:ProbeMatch>
-            <d:XAddrs>http://192.168.1.99/foreign http://192.168.1.40/onvif/device_service</d:XAddrs>
-            <d:Scopes>onvif://www.onvif.org/manufacturer/Oxita onvif://www.onvif.org/name/Camera%20A</d:Scopes>
-          </d:ProbeMatch>
+          <wsa:EndpointReference><wsa:Address>urn:uuid:camera-40</wsa:Address></wsa:EndpointReference>
+          <d:XAddrs>http://192.168.1.99/foreign http://192.168.1.40/onvif/device_service</d:XAddrs>
+          <d:Scopes>onvif://www.onvif.org/manufacturer/Oxita onvif://www.onvif.org/name/Camera%20A</d:Scopes>
         </d:ProbeMatch></d:ProbeMatches></e:Body>
       </e:Envelope>
     ''';
