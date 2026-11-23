@@ -97,6 +97,22 @@ class _DashboardPageState extends State<DashboardPage> {
     return null;
   }
 
+  String _defaultSubnetCidr() {
+    final network = activeInterface;
+    if (network == null) return '';
+    for (final address in network.addresses) {
+      if (address.type != InternetAddressType.IPv4) continue;
+      try {
+        final dynamic details = address;
+        final prefix = details.prefixLength;
+        if (prefix is int && prefix >= 1 && prefix <= 30) return '${address.address}/$prefix';
+      } on NoSuchMethodError {
+        // Older Dart SDKs do not expose InterfaceAddress.prefixLength.
+      }
+    }
+    return '';
+  }
+
   String _interfaceAddressSummary(NetworkInterface? network) {
     if (network == null) return 'Select an active IPv4 interface';
     return network.addresses.map((address) {
@@ -157,11 +173,13 @@ class _DashboardPageState extends State<DashboardPage> {
 
   Future<void> _subnet() async {
     if (discovery.isSubnetScanning) { discovery.cancelSubnetScan(); return; }
-    final value = await _ask('Scan selected subnet','IPv4 / prefix',hint:'192.168.1.20/24');
+    final value = await _ask('Scan selected subnet','Selected interface IPv4 / prefix',initial:_defaultSubnetCidr(),hint:'192.168.1.20/24');
     if (value == null) return;
     try {
       final p = value.split('/'), ip = InternetAddress.tryParse(p.first), prefix = p.length == 2 ? int.tryParse(p[1]) : null;
+      if (activeInterface == null) throw const FormatException('Select an active network interface first.');
       if (ip == null || ip.type != InternetAddressType.IPv4 || ip.isLoopback || ip.isMulticast || prefix == null || prefix < 1 || prefix > 30) throw const FormatException('Enter a valid IPv4 CIDR, e.g. 192.168.1.20/24.');
+      if (!activeInterface!.addresses.any((a) => a.address == ip.address)) throw const FormatException('The CIDR address must belong to the selected network interface.');
       final m = (0xffffffff << (32-prefix)) & 0xffffffff;
       final mask = InternetAddress.fromRawAddress([(m>>24)&255,(m>>16)&255,(m>>8)&255,m&255]);
       await discovery.scanSubnet(ip,mask,onProgress:(done,total,candidates){ if(mounted)setState(()=>subnetProgress='Subnet: $done/$total · $candidates candidates'); });
