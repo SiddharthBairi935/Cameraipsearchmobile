@@ -244,11 +244,25 @@ class DeviceDiscoveryService extends ChangeNotifier {
 
   void _merge(CameraDevice incoming) {
     final key = incoming.macAddress.isNotEmpty ? incoming.macAddress : incoming.ipAddress;
-    final existing = _devices[key];
+    String? matchedKey;
+    for (final entry in _devices.entries) {
+      final sameMac = incoming.macAddress.isNotEmpty &&
+          entry.value.macAddress.isNotEmpty &&
+          entry.value.macAddress == incoming.macAddress;
+      final sameIp = incoming.ipAddress.isNotEmpty &&
+          entry.value.ipAddress == incoming.ipAddress;
+      if (sameMac || sameIp) {
+        matchedKey = entry.key;
+        break;
+      }
+    }
+    final existing = matchedKey == null ? null : _devices.remove(matchedKey);
     if (existing == null) {
       _devices[key] = incoming;
     } else {
       _devices[key] = existing.copyWith(
+        id: key,
+        ipAddress: incoming.ipAddress.isNotEmpty ? incoming.ipAddress : existing.ipAddress,
         macAddress: existing.macAddress.isEmpty ? incoming.macAddress : existing.macAddress,
         manufacturer: existing.manufacturer.startsWith('ONVIF') ? incoming.manufacturer : existing.manufacturer,
         model: existing.model == 'Model unknown' ? incoming.model : existing.model,
