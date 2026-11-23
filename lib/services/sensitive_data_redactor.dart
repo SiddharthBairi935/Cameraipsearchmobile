@@ -17,8 +17,8 @@ class SensitiveDataRedactor {
     var value = input
       .replaceAll(_bearer, 'Bearer [REDACTED]')
       .replaceAll(_basic, 'Basic [REDACTED]')
-      .replaceAllMapped(_keyValue, (m) => '${m[1]}[REDACTED]')
       .replaceAll(_digest, 'Digest [REDACTED]')
+      .replaceAllMapped(_keyValue, (m) => '${m[1]}[REDACTED]')
       .replaceAllMapped(_urlUserInfo, (m) => '${m[1]}[REDACTED]@')
       .replaceAll(_xmlSecret, '<REDACTED>');
     if (value.length > maxLength) value = '${value.substring(0, maxLength)}…[TRUNCATED]';
