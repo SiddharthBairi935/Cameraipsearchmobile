@@ -1,5 +1,8 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math' as math;
+
+import 'package:crypto/crypto.dart';
 
 import 'package:xml/xml.dart';
 
@@ -11,6 +14,7 @@ class OnvifDeviceService {
 
   final Future<OnvifCredentials?> Function(String host, String realm, String scheme)? requestCredentials;
   final Map<String, OnvifCredentials> _sessionCredentials = {};
+  final Map<String, int> _digestNonceCounts = {};
   final Set<HttpClient> _activeClients = {};
 
   void cancelActive() {
@@ -250,32 +254,36 @@ class OnvifDeviceService {
     if (uri == null || !isSafeEndpoint(device)) throw const OnvifException('Unsafe or invalid ONVIF service URL.');
     final client = HttpClient()..connectionTimeout = const Duration(seconds: 4);
     _activeClients.add(client);
-    final cached = _sessionCredentials[uri.host];
-    if (cached != null) {
-      client.addCredentials(uri, cached.realm, _httpCredentials(cached));
-    }
-    client.authenticate = (url, scheme, realm) async {
-      final credentials = _sessionCredentials[url.host] ??
-          await requestCredentials?.call(url.host, realm ?? '', scheme);
-      if (credentials == null) return false;
-      _sessionCredentials[url.host] = credentials;
-      client.addCredentials(url, credentials.realm.isEmpty ? (realm ?? '') : credentials.realm, _httpCredentials(credentials));
-      return true;
-    };
     try {
-      final request = await client.postUrl(uri).timeout(const Duration(seconds: 5));
-      request.followRedirects = false;
-      request.headers.contentType = ContentType('application', 'soap+xml', charset: 'utf-8');
-      request.write(_envelope(operation, body));
-      final response = await request.close().timeout(const Duration(seconds: 45));
+      var response = await _sendSoap(client, uri, operation, body);
+      if (response.statusCode == HttpStatus.unauthorized) {
+        final challenges = response.headers[HttpHeaders.wwwAuthenticateHeader] ?? const <String>[];
+        await response.drain<void>();
+        final challenge = _selectChallenge(challenges);
+        if (challenge == null) throw const OnvifException('Camera requested an unsupported HTTP authentication scheme.');
+        final scheme = challenge.substring(0, challenge.indexOf(' ')).toLowerCase();
+        final parameters = _parseAuthParameters(challenge);
+        final realm = parameters['realm'] ?? '';
+        final credentials = _sessionCredentials[uri.host] ??
+            await requestCredentials?.call(uri.host, realm, scheme);
+        if (credentials == null) {
+          throw const OnvifException('Camera authentication was cancelled. No credentials were stored.');
+        }
+        _sessionCredentials[uri.host] = credentials;
+        final authorization = _authorizationHeader(
+          uri: uri, method: 'POST', scheme: scheme, challenge: parameters, credentials: credentials,
+        );
+        response = await _sendSoap(client, uri, operation, body, authorization: authorization);
+      }
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        await response.drain<void>();
+        throw OnvifException('ONVIF $operation failed with HTTP ${response.statusCode}. Authentication may be required or the operation may be unsupported.');
+      }
       final bytes = await response.fold<List<int>>(<int>[], (all, chunk) {
         if (all.length + chunk.length > 1024 * 1024) throw const OnvifException('ONVIF response exceeds 1 MB.');
         return all..addAll(chunk);
-      }).timeout(const Duration(seconds: 5));
-      if (response.statusCode < 200 || response.statusCode >= 300) {
-        throw OnvifException('ONVIF $operation failed with HTTP ${response.statusCode}. Authentication may be required or the operation may be unsupported.');
-      }
-      final document = XmlDocument.parse(String.fromCharCodes(bytes));
+      }).timeout(const Duration(seconds: 10));
+      final document = XmlDocument.parse(utf8.decode(bytes));
       if (_firstElement(document, 'Fault') != null) throw OnvifException('Camera returned a SOAP fault for $operation.');
       if (_firstElement(document, '${operation}Response') == null) {
         throw OnvifException('Camera returned an unexpected response for $operation.');
@@ -299,10 +307,99 @@ class OnvifDeviceService {
     }
   }
 
-  static HttpClientCredentials _httpCredentials(OnvifCredentials credentials) =>
-      credentials.scheme.toLowerCase() == 'digest'
-          ? HttpClientDigestCredentials(credentials.username, credentials.password)
-          : HttpClientBasicCredentials(credentials.username, credentials.password);
+  Future<HttpClientResponse> _sendSoap(
+    HttpClient client, Uri uri, String operation, String body, {String? authorization}
+  ) async {
+    final request = await client.postUrl(uri).timeout(const Duration(seconds: 5));
+    request.followRedirects = false;
+    request.headers.contentType = ContentType('application', 'soap+xml', charset: 'utf-8');
+    if (authorization != null) request.headers.set(HttpHeaders.authorizationHeader, authorization);
+    request.write(_envelope(operation, body));
+    return request.close().timeout(const Duration(seconds: 45));
+  }
+
+  static String? _selectChallenge(List<String> challenges) {
+    for (final challenge in challenges) {
+      if (challenge.trimLeft().toLowerCase().startsWith('digest ')) return challenge.trim();
+    }
+    for (final challenge in challenges) {
+      if (challenge.trimLeft().toLowerCase().startsWith('basic ')) return challenge.trim();
+    }
+    return null;
+  }
+
+  static Map<String, String> _parseAuthParameters(String challenge) {
+    final parameters = <String, String>{};
+    final separator = challenge.indexOf(' ');
+    if (separator < 0) return parameters;
+    final pattern = RegExp(r'(\w+)\s*=\s*("[^"]*"|[^,]+)');
+    for (final match in pattern.allMatches(challenge.substring(separator + 1))) {
+      var value = (match.group(2) ?? '').trim();
+      if (value.startsWith('"') && value.endsWith('"') && value.length >= 2) {
+        value = value.substring(1, value.length - 1);
+      }
+      parameters[(match.group(1) ?? '').toLowerCase()] = value;
+    }
+    return parameters;
+  }
+
+  String _authorizationHeader({
+    required Uri uri, required String method, required String scheme,
+    required Map<String, String> challenge, required OnvifCredentials credentials,
+  }) {
+    if (scheme == 'basic') {
+      final token = base64Encode(utf8.encode('${credentials.username}:${credentials.password}'));
+      return 'Basic $token';
+    }
+    if (scheme != 'digest') throw const OnvifException('Only HTTP Basic and Digest authentication are supported.');
+    final realm = challenge['realm'] ?? '';
+    final nonce = challenge['nonce'] ?? '';
+    if (nonce.isEmpty) throw const OnvifException('Digest challenge did not contain a nonce.');
+    final algorithm = (challenge['algorithm'] ?? 'MD5').toUpperCase();
+    if (algorithm != 'MD5' && algorithm != 'MD5-SESS') {
+      throw OnvifException('Unsupported Digest algorithm: $algorithm.');
+    }
+    final qops = (challenge['qop'] ?? '').split(',').map((v) => v.trim().toLowerCase()).where((v) => v.isNotEmpty).toList();
+    if (qops.isNotEmpty && !qops.contains('auth')) {
+      throw const OnvifException('Camera Digest challenge requires unsupported qop; only qop=auth is supported.');
+    }
+    final path = uri.path.isEmpty ? '/' : uri.path;
+    final cnonce = List<int>.generate(16, (_) => math.Random.secure().nextInt(256))
+        .map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+    var ha1 = _md5('${credentials.username}:$realm:${credentials.password}');
+    if (algorithm == 'MD5-SESS') ha1 = _md5('$ha1:$nonce:$cnonce');
+    final ha2 = _md5('$method:$path');
+    final qop = qops.contains('auth') ? 'auth' : '';
+    var nc = '';
+    late final String digestResponse;
+    if (qop.isNotEmpty) {
+      final countKey = '${uri.host}:$nonce';
+      final count = (_digestNonceCounts[countKey] ?? 0) + 1;
+      _digestNonceCounts[countKey] = count;
+      nc = count.toRadixString(16).padLeft(8, '0');
+      digestResponse = _md5('$ha1:$nonce:$nc:$cnonce:$qop:$ha2');
+    } else {
+      digestResponse = _md5('$ha1:$nonce:$ha2');
+    }
+    String quote(String value) => '"${value.replaceAll(r'\\', r'\\\\').replaceAll('"', r'\"')}"';
+    final fields = <String>[
+      'username=${quote(credentials.username)}',
+      'realm=${quote(realm)}',
+      'nonce=${quote(nonce)}',
+      'uri=${quote(path)}',
+      'response=${quote(digestResponse)}',
+      'algorithm=$algorithm',
+    ];
+    if (qop.isNotEmpty) {
+      fields.add('qop=$qop');
+      fields.add('nc=$nc');
+      fields.add('cnonce=${quote(cnonce)}');
+    }
+    if ((challenge['opaque'] ?? '').isNotEmpty) fields.add('opaque=${quote(challenge['opaque']!)}');
+    return 'Digest ${fields.join(', ')}';
+  }
+
+  static String _md5(String value) => md5.convert(utf8.encode(value)).toString();
 
   static String _envelope(String operation, String body) =>
       '<?xml version="1.0" encoding="UTF-8"?>'
