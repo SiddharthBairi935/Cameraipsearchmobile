@@ -144,8 +144,16 @@ class DeviceDiscoveryService extends ChangeNotifier {
       }, onError: (Object error) {
         _setStatus('Socket error on ${interface.name}: $error');
       });
-      _sendOnvifProbe(openedSocket);
-      _sendProjectProbe(openedSocket, sequence);
+      try {
+        _sendOnvifProbe(openedSocket);
+      } on SocketException catch (error) {
+        _setStatus('ONVIF multicast send unavailable on ${interface.name}: ${error.message}');
+      }
+      try {
+        _sendProjectProbe(openedSocket, sequence);
+      } on SocketException catch (error) {
+        _setStatus('Oxita UDP probe unavailable on ${interface.name}: ${error.message}');
+      }
     } on SocketException catch (error) {
       if (socket != null) { _sockets.remove(socket); socket.close(); }
       _setStatus('Could not bind ${interface.name}: ${error.message}');
