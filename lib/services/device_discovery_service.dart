@@ -30,6 +30,7 @@ class DeviceDiscoveryService extends ChangeNotifier {
   Timer? _timeout;
   int _sequence = DateTime.now().millisecondsSinceEpoch & 0x7fffffff;
   bool _isScanning = false;
+  bool _disposed = false;
   String _status = 'Ready to discover cameras on your local network.';
 
   List<CameraDevice> get devices => _devices.values.toList()
@@ -38,6 +39,7 @@ class DeviceDiscoveryService extends ChangeNotifier {
   String get status => _status;
 
   void updateDevice(CameraDevice device) {
+    if (_disposed) return;
     final matched = _matchingKey(device);
     final key = matched ?? (device.macAddress.isNotEmpty ? device.macAddress : device.id);
     if (key.isEmpty) return;
@@ -47,11 +49,13 @@ class DeviceDiscoveryService extends ChangeNotifier {
   }
 
   void restoreDevice(CameraDevice device) {
+    if (_disposed) return;
     final key = device.macAddress.isNotEmpty ? device.macAddress : device.ipAddress;
     if (key.isNotEmpty) _devices[key] = device;
   }
 
   void updateReachability(CameraDevice device, String result) {
+    if (_disposed) return;
     final key = device.macAddress.isNotEmpty ? device.macAddress : device.ipAddress;
     final existing = _devices[key];
     if (existing != null) {
@@ -62,15 +66,16 @@ class DeviceDiscoveryService extends ChangeNotifier {
 
   void _setStatus(String value) {
     _status = value;
-    notifyListeners();
+    if (!_disposed) notifyListeners();
   }
 
   Future<void> startDiscovery({String interfaceName = ''}) async {
-    if (_isScanning) return;
+    if (_disposed || _isScanning) return;
     if (!await _ensureLocalNetworkAccess()) {
-      _setStatus('Local network permission is required to discover cameras.');
+      if (!_disposed) _setStatus('Local network permission is required to discover cameras.');
       return;
     }
+    if (_disposed) return;
     await cancelDiscovery(notify: false);
     _selectedInterfaceName = interfaceName;
     final generation = ++_discoveryGeneration;
@@ -404,6 +409,7 @@ class DeviceDiscoveryService extends ChangeNotifier {
   final Set<String> _refreshing = {};
 
   Future<void> refreshDeviceInfo(CameraDevice device) async {
+    if (_disposed) return;
     final key = _matchingKey(device) ?? (device.macAddress.isNotEmpty ? device.macAddress : device.ipAddress);
     if (key.isEmpty || !_refreshing.add(key)) return;
     _setStatus('Refreshing ONVIF information for ${device.ipAddress}…');
@@ -443,11 +449,12 @@ class DeviceDiscoveryService extends ChangeNotifier {
   }
 
   Future<void> scanSubnet(InternetAddress localAddress, InternetAddress mask, {void Function(int completed, int total, int candidates)? onProgress}) async {
-    if (_isSubnetScanning) return;
+    if (_disposed || _isSubnetScanning) return;
     if (!await _ensureLocalNetworkAccess()) {
-      _setStatus('Local network permission is required to scan this subnet.');
+      if (!_disposed) _setStatus('Local network permission is required to scan this subnet.');
       return;
     }
+    if (_disposed) return;
     _cancelSubnet = false;
     if (localAddress.type != InternetAddressType.IPv4 || localAddress.isLoopback || localAddress.isMulticast) {
       throw const FormatException('A usable local IPv4 address is required.');
@@ -617,6 +624,7 @@ class DeviceDiscoveryService extends ChangeNotifier {
   }
 
   Future<void> cancelDiscovery({bool notify = true}) async {
+    if (_disposed) return;
     _discoveryGeneration++;
     _onvif.cancelActive();
     _timeout?.cancel();
