@@ -26,7 +26,7 @@ The mobile branch includes the PR #4 camera discovery and device-management work
 - Manual IP address/hostname inventory entry, labels, search, manufacturer/status filters and device detail profile.
 - Guarded ONVIF static IPv4 write: local validation, explicit confirmation, SOAP response validation, new-IP verification and separate gateway result handling.
 - Local SQLite inventory with pre-migration `PRAGMA quick_check`, schema migration, persistent Operation History (latest 1,000; latest 250 displayed), CSV export/share, app data path information and session-only ONVIF HTTP Basic/Digest challenge credentials.
-- Rotating diagnostic logs (2 MiB active file, three archives), best-effort redaction for key/value secrets, Basic/Bearer authorization, URL user-info and namespaced XML secret elements.
+- Rotating diagnostic logs (2 MiB active file, three archives), best-effort redaction for usernames, key/value secrets, Basic/Bearer/Digest authorization, URL user-info and namespaced XML secret elements.
 - User-confirmed diagnostic support bundle with OS/app/runtime details, IPv4 interface summary, recent operation history and redacted logs; inventory database and ONVIF interface tokens are excluded. The user can inspect the text before sharing.
 - Deterministic mobile test fixtures matching the desktop simulator's Contract B and limited ONVIF response scenarios, including malformed JSON, wrong sequence, invalid port, advertised-IP mismatch, missing MAC, unsafe/multiple XAddrs.
 - Discovery, subnet scan and reachability completion/cancellation outcomes are recorded; active scans are cancelled when the app backgrounds.
