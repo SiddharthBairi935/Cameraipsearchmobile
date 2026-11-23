@@ -394,6 +394,8 @@ class OnvifDeviceService {
       fields.add('qop=$qop');
       fields.add('nc=$nc');
       fields.add('cnonce=${quote(cnonce)}');
+    } else if (algorithm == 'MD5-SESS') {
+      fields.add('cnonce=${quote(cnonce)}');
     }
     if ((challenge['opaque'] ?? '').isNotEmpty) fields.add('opaque=${quote(challenge['opaque']!)}');
     return 'Digest ${fields.join(', ')}';
