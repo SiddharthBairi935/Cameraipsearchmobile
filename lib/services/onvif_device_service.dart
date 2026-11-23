@@ -289,6 +289,10 @@ class OnvifDeviceService {
       throw OnvifException('ONVIF $operation HTTP transport error: ${error.message}');
     } on FormatException {
       throw OnvifException('Camera returned malformed XML for $operation.');
+    } on OnvifException {
+      rethrow;
+    } on Exception catch (error) {
+      throw OnvifException('Could not parse ONVIF $operation response: $error');
     } finally {
       _activeClients.remove(client);
       client.close(force: true);
