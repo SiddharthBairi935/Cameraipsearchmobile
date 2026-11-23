@@ -14,7 +14,7 @@ class DeviceDiscoveryService extends ChangeNotifier {
       : _onvif = onvifService ?? OnvifDeviceService();
 
   final OnvifDeviceService _onvif;
-  bool _cancelSubnet = false;
+  bool _cancelSubnet = false;\n  bool _isSubnetScanning = false;\n  bool get isSubnetScanning => _isSubnetScanning;
   bool _cancelReachability = false;
   int _discoveryGeneration = 0;
   String _selectedInterfaceName = '';
@@ -427,7 +427,8 @@ class DeviceDiscoveryService extends ChangeNotifier {
       _setStatus('Local network permission is required to scan this subnet.');
       return;
     }
-    _cancelSubnet = false;\n    final ip = localAddress.rawAddress;
+    _cancelSubnet = false;
+    final ip = localAddress.rawAddress;
     final maskBytes = mask.rawAddress;
     if (ip.length != 4 || maskBytes.length != 4) throw const FormatException('IPv4 only.');
     var network = 0, broadcast = 0, own = 0;
@@ -439,7 +440,9 @@ class DeviceDiscoveryService extends ChangeNotifier {
     final first = network + 1;
     final last = broadcast - 1;
     if (last < first) throw const FormatException('Invalid subnet.');
-    final hostCount = last - first + 1;\n    final end = hostCount <= 256 ? last : (own + 128 < last ? own + 128 : last);\n    final start = hostCount <= 256 ? first : (own - 127 > first ? own - 127 : first);
+    final hostCount = last - first + 1;
+    final end = hostCount <= 256 ? last : (own + 128 < last ? own + 128 : last);
+    final start = hostCount <= 256 ? first : (own - 127 > first ? own - 127 : first);
     final hosts = <int>[];
     for (var host = start; host <= end; host++) {
       if (host != own) hosts.add(host);
@@ -458,7 +461,8 @@ class DeviceDiscoveryService extends ChangeNotifier {
         await semaphore.acquire();
         try {
           final openPorts = <int>[];
-          for (final port in ports) {\n            if (_cancelSubnet) break;
+          for (final port in ports) {
+            if (_cancelSubnet) break;
             try {
               final socket = await Socket.connect(address, port, timeout: const Duration(milliseconds: 450));
               socket.destroy();
@@ -493,8 +497,14 @@ class DeviceDiscoveryService extends ChangeNotifier {
     _setStatus('Subnet scan complete. $candidates unverified candidate(s) found from $completed host(s).');
   }
 
-  void cancelSubnetScan() { _cancelSubnet = true; _setStatus('Cancelling subnet scan…'); }\n\n  Future<String> checkReachability(CameraDevice device) async {
+  void cancelSubnetScan() { _cancelSubnet = true; _setStatus('Cancelling subnet scan…'); }
+
+  Future<String> checkReachability(CameraDevice device) async {
     if (!await _ensureLocalNetworkAccess()) return 'Permission required';
+    return _checkDevice(device);
+  }
+
+  Future<String> _checkDevice(CameraDevice device) async {
     const ports = [80, 443, 554, 8000, 8080, 8899, 34567];
     for (final port in {...device.openPorts, ...ports}) {
       try {
@@ -508,6 +518,37 @@ class DeviceDiscoveryService extends ChangeNotifier {
       }
     }
     return 'No response';
+  }
+
+  Future<int> checkReachabilityBatch(
+    List<CameraDevice> devices, {
+    void Function(int completed, int total, CameraDevice current)? onProgress,
+  }) async {
+    if (!await _ensureLocalNetworkAccess()) return 0;
+    _cancelReachability = false;
+    var completed = 0;
+    for (final device in devices) {
+      if (_cancelReachability) break;
+      onProgress?.call(completed, devices.length, device);
+      final result = await _checkDevice(device);
+      final checkedAt = DateTime.now().toIso8601String();
+      _merge(device.copyWith(
+        reachabilityStatus: result,
+        reachabilityCheckedAt: checkedAt,
+        lastSuccessfulResponseAt: result == 'Reachable' ? checkedAt : device.lastSuccessfulResponseAt,
+      ));
+      completed++;
+      onProgress?.call(completed, devices.length, device);
+    }
+    _setStatus(_cancelReachability
+        ? 'Reachability check cancelled after $completed device(s).'
+        : 'Reachability check complete for $completed device(s).');
+    return completed;
+  }
+
+  void cancelReachability() {
+    _cancelReachability = true;
+    _setStatus('Cancelling reachability checks…');
   }
 
   Future<void> _acquireMulticastLock() async {
