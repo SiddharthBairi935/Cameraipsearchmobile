@@ -32,7 +32,7 @@ Status distinguishes a mobile code path from verified physical-device behavior.
 | CP Plus / Hikvision / Prama adapters | Not implemented | No verified desktop adapters |
 | Project activation/configuration | Not implemented | No wire contract |
 | Firmware update / reboot / NVR / bulk config | Not implemented | Same as desktop PR #4 |
-| ONVIF WS-Security / OS credential vault | Not implemented | Session-only HTTP Basic/Digest challenge credentials |
+| ONVIF WS-Security / OS credential vault | Not implemented | Session-only HTTP Basic and Digest MD5/MD5-sess qop=auth challenge credentials; Digest SHA-256, auth-int and WS-Security are not implemented |
 
 ## Platform-specific parity gaps
 
