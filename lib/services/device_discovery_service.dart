@@ -179,10 +179,10 @@ class DeviceDiscoveryService extends ChangeNotifier {
     if (datagram.data.length > 65507) return;
     final payload = utf8.decode(datagram.data, allowMalformed: true);
     if (payload.contains('CAM_DISCOVER')) {
-      final device = _parseProjectResponse(payload, expectedSequence, datagram.address, interfaceName);
+      final device = parseProjectResponse(payload, expectedSequence, datagram.address, interfaceName);
       if (device != null) _merge(device);
     } else if (payload.contains('ProbeMatch')) {
-      final device = _parseOnvifResponse(payload, datagram.address, interfaceName);
+      final device = parseOnvifResponse(payload, datagram.address, interfaceName);
       if (device != null) _merge(device);
     }
   }
