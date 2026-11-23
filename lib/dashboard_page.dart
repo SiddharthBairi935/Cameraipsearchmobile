@@ -239,7 +239,7 @@ class _DashboardPageState extends State<DashboardPage> {
           Text('${d.ipAddress} · ${d.manufacturer} · ${d.model}',maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(color:muted,fontSize:11)),
           Text('${d.isCandidate?'Unverified candidate':d.reachabilityStatus} · ${d.discoverySources.join(', ')}',maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(color:muted,fontSize:10)),
         ])),
-        IconButton(onPressed:()=>_rename(d),icon:const Icon(Icons.edit_outlined,size:18)),const Icon(Icons.chevron_right,color:muted),
+        IconButton(onPressed:()=>unawaited(_rename(d)),icon:const Icon(Icons.edit_outlined,size:18)),const Icon(Icons.chevron_right,color:muted),
       ]))));
   }
 
@@ -292,11 +292,11 @@ class _DashboardPageState extends State<DashboardPage> {
 
   Widget _tools()=>ListView(padding:const EdgeInsets.all(18),children:[
     _heading('Network tools','Installer and field-technician workflows'),
-    _tool(Icons.radar,'ONVIF + Oxita discovery','Discover devices on selected IPv4 interface.',_discover),
-    _tool(Icons.lan,discovery.isSubnetScanning?'Cancel subnet scan':'Bounded subnet scan','Probe up to 256 IPv4 hosts; TCP responders remain unverified candidates.',_subnet),
-    _tool(Icons.network_check,checking?'Cancel reachability checks':'Check reachability','Checks selected devices or all visible devices when none selected.',_reachability),
-    _tool(Icons.add_link,'Add device manually','Add a known camera IPv4 address.',_manual),
-    _tool(Icons.file_download,'Export inventory CSV','Share filtered inventory with device, network and capability fields.',_export),
+    _tool(Icons.radar,'ONVIF + Oxita discovery','Discover devices on selected IPv4 interface.',()=>unawaited(_discover())),
+    _tool(Icons.lan,discovery.isSubnetScanning?'Cancel subnet scan':'Bounded subnet scan','Probe up to 256 IPv4 hosts; TCP responders remain unverified candidates.',()=>unawaited(_subnet())),
+    _tool(Icons.network_check,checking?'Cancel reachability checks':'Check reachability','Checks selected devices or all visible devices when none selected.',()=>unawaited(_reachability())),
+    _tool(Icons.add_link,'Add device manually','Add a known camera IPv4 address.',()=>unawaited(_manual())),
+    _tool(Icons.file_download,'Export inventory CSV','Share filtered inventory with device, network and capability fields.',()=>unawaited(_export())),
     const SizedBox(height:14),_heading('Feature availability','Unimplemented desktop features stay unavailable'),
     _cap('ONVIF discovery and enrichment','Available when supported',true),
     _cap('TCP reachability and bounded scan','Available',true),
@@ -331,9 +331,9 @@ class _DashboardPageState extends State<DashboardPage> {
         Text('OXITA',style:TextStyle(fontSize:16,fontWeight:FontWeight.w900,letterSpacing:1.2)),
         Text('CAMERA DEVICE MANAGER',style:TextStyle(fontSize:9,color:muted,letterSpacing:1)),
       ]),
-    ]),actions:[IconButton(onPressed:_manual,icon:const Icon(Icons.add_circle_outline),tooltip:'Add device'),IconButton(onPressed:_export,icon:const Icon(Icons.file_download),tooltip:'Export CSV')]),
+    ]),actions:[IconButton(onPressed:()=>unawaited(_manual()),icon:const Icon(Icons.add_circle_outline),tooltip:'Add device'),IconButton(onPressed:()=>unawaited(_export()),icon:const Icon(Icons.file_download),tooltip:'Export CSV')]),
     body:SafeArea(child:IndexedStack(index:tab,children:[_overview(),_devices(),_tools(),_settings()])),
-    floatingActionButton:tab<2?FloatingActionButton.extended(onPressed:_discover,backgroundColor:red,foregroundColor:Colors.white,
+    floatingActionButton:tab<2?FloatingActionButton.extended(onPressed:()=>unawaited(_discover()),backgroundColor:red,foregroundColor:Colors.white,
       icon:Icon(discovery.isScanning?Icons.stop:Icons.radar),label:Text(discovery.isScanning?'Stop discovery':'Discover devices')):null,
     bottomNavigationBar:NavigationBar(selectedIndex:tab,onDestinationSelected:(v)=>setState(()=>tab=v),destinations:const[
       NavigationDestination(icon:Icon(Icons.grid_view),label:'Overview'),NavigationDestination(icon:Icon(Icons.videocam_outlined),label:'Devices'),
