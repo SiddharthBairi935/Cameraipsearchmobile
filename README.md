@@ -51,6 +51,12 @@ Run `bash tool/bootstrap_platforms.sh` to generate standard Android/iOS runners 
 ### iOS
 The bootstrap script adds `NSLocalNetworkUsageDescription`. ONVIF UDP multicast/broadcast also requires Apple's multicast networking entitlement and an authorized provisioning profile. Request the entitlement from Apple and validate an entitled physical-device build before claiming iOS discovery parity. Without it, iOS may not receive ONVIF multicast replies.
 
+## Security and testing documentation
+
+- [Security and privacy review](docs/security-and-privacy-review.md)
+- [Simulator and integration testing](docs/simulator-and-integration-testing.md)
+- [Desktop-to-mobile parity matrix](docs/parity-matrix.md)
+
 ## Setup
 
 Requirements: Flutter stable, Android Studio for Android, Xcode/macOS for iOS.
