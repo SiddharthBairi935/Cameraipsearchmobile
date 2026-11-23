@@ -140,7 +140,7 @@ class _DashboardPageState extends State<DashboardPage> {
     if (targets.isEmpty) { _msg('Add or discover devices first.'); return; }
     setState(()=>checking=true);
     final count = await discovery.checkReachabilityBatch(targets,onProgress:(done,total,d){if(mounted)setState(()=>progress='Reachability: $done/$total · ${d.ipAddress}');});
-    if(mounted)setState(()=>{checking=false,progress='',selected.clear()});
+    if(mounted)setState(() { checking=false; progress=''; selected.clear(); });
     _msg('Checked $count device(s).');
   }
 
