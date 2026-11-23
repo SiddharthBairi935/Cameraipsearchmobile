@@ -200,7 +200,7 @@ class _DashboardPageState extends State<DashboardPage> {
 
   Future<void> _rename(CameraDevice d) async {
     final value = await _ask('Rename device label','Device label',initial:d.userLabel,hint:'Front gate camera');
-    if(value != null) discovery.updateDevice(d.copyWith(userLabel:value));
+    if(value != null && mounted) discovery.updateDevice(d.copyWith(userLabel:value));
   }
 
   Future<void> _export() async {
