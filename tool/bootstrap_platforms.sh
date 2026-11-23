@@ -73,6 +73,11 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    override fun onDestroy() {
+        if (multicastLock?.isHeld == true) multicastLock?.release()
+        super.onDestroy()
+    }
+
     override fun onRequestPermissionsResult(
         requestCode: Int,
         permissions: Array<out String>,
