@@ -334,8 +334,10 @@ class OnvifDeviceService {
   static bool _verifyInterfaceAddress(XmlDocument doc, String token, String address) {
     for (final item in doc.descendants.whereType<XmlElement>().where((e) => e.name.local == 'NetworkInterface')) {
       if ((item.getAttribute('token') ?? '') != token) continue;
-      final actual = _firstText(item, {'Address', 'IPv4Address'});
-      return actual == address;
+      final addresses = item.descendants.whereType<XmlElement>()
+          .where((e) => e.name.local == 'Address' || e.name.local == 'IPv4Address')
+          .map((e) => e.innerText.trim());
+      return addresses.contains(address);
     }
     return false;
   }
