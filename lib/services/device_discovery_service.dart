@@ -127,7 +127,7 @@ class DeviceDiscoveryService extends ChangeNotifier {
       openedSocket.multicastHops = 1;
       try {
         openedSocket.joinMulticast(onvifGroup, interface);
-      } on SocketException catch (error) {
+      } catch (error) {
         // Some mobile builds (notably iOS without Apple's multicast entitlement)
         // cannot join multicast. Keep the socket alive for any permitted unicast
         // or project probe path and report the platform limitation.
@@ -146,12 +146,12 @@ class DeviceDiscoveryService extends ChangeNotifier {
       });
       try {
         _sendOnvifProbe(openedSocket);
-      } on SocketException catch (error) {
+      } catch (error) {
         _setStatus('ONVIF multicast send unavailable on ${interface.name}: ${error.message}');
       }
       try {
         _sendProjectProbe(openedSocket, sequence);
-      } on SocketException catch (error) {
+      } catch (error) {
         _setStatus('Oxita UDP probe unavailable on ${interface.name}: ${error.message}');
       }
     } on SocketException catch (error) {
