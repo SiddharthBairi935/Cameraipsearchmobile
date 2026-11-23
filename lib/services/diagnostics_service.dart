@@ -13,6 +13,7 @@ class DiagnosticsService {
 
   static const maxLogBytes = 2 * 1024 * 1024;
   static const retainedArchives = 3;
+  Future<void> _logQueue = Future<void>.value();
 
   Future<Directory> _logDirectory() async {
     if (_logDirectoryOverride != null) {
@@ -25,7 +26,13 @@ class DiagnosticsService {
     return directory;
   }
 
-  Future<void> log(String level, String message) async {
+  Future<void> log(String level, String message) {
+    final operation = _logQueue.then((_) => _writeLog(level, message));
+    _logQueue = operation.catchError((Object _) {});
+    return operation;
+  }
+
+  Future<void> _writeLog(String level, String message) async {
     try {
       final directory = await _logDirectory();
       final file = File(p.join(directory.path, 'application.log'));
@@ -34,9 +41,7 @@ class DiagnosticsService {
         if (await oldest.exists()) await oldest.delete();
         for (var i = retainedArchives - 1; i >= 1; i--) {
           final source = File('${file.path}.$i');
-          if (await source.exists()) {
-            await source.rename('${file.path}.${i + 1}');
-          }
+          if (await source.exists()) await source.rename('${file.path}.${i + 1}');
         }
         if (await file.exists()) await file.rename('${file.path}.1');
       }
@@ -52,6 +57,7 @@ class DiagnosticsService {
     required List<OperationHistoryEntry> history,
     required int deviceCount,
   }) async {
+    await _logQueue;
     final out = StringBuffer()
       ..writeln('OXITA CAMERA IP SEARCH MOBILE - DIAGNOSTIC BUNDLE')
       ..writeln('Generated UTC: ${DateTime.now().toUtc().toIso8601String()}')
