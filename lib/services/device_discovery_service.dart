@@ -402,7 +402,6 @@ class _AsyncSemaphore {
     final waiter = Completer<void>();
     _waiters.add(waiter);
     await waiter.future;
-    _active++;
   }
 
   void release() {
