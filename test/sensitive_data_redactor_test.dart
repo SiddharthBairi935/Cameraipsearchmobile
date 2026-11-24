@@ -52,7 +52,7 @@ void main() {
 
     test('redacts authorization headers and WS-Security AccessToken XML', () {
       final result = SensitiveDataRedactor.redact(
-        'Authorization: Bearer header-secret\\n'
+        'Authorization: Bearer header-secret\n'
         '<wsse:AccessToken>wsse-secret</wsse:AccessToken>',
       );
       expect(result, isNot(contains('header-secret')));
