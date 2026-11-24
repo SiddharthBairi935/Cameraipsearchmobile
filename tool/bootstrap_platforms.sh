@@ -68,10 +68,10 @@ class MainActivity : FlutterActivity() {
                         result.success(mapOf("state" to "unknown", "evidence" to "A valid IPv4 address is required."))
                         return@setMethodCallHandler
                     }
-                    val targetBytes = octets.map { it!! }.toByteArray()
+                    val targetBytes = octets.map { it!!.toByte() }.toByteArray()
                     val target = java.net.InetAddress.getByAddress(targetBytes) as java.net.Inet4Address
                     val networkInterface = NetworkInterface.getByName(interfaceName)
-                    if (networkInterface == null || !networkInterface.isUp || !networkInterface.isRunning) {
+                    if (networkInterface == null || !networkInterface.isUp) {
                         result.success(mapOf("state" to "unknown", "evidence" to "The selected interface is unavailable or not running."))
                         return@setMethodCallHandler
                     }
