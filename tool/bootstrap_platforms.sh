@@ -238,9 +238,9 @@ if plist.exists():
     content = plist.read_text()
     display_key = "<key>CFBundleDisplayName</key>"
     if display_key in content:
-        content = re.sub(r"(<key>CFBundleDisplayName</key>\\s*<string>)[^<]*(</string>)", r"\\1Oxita Camera IP Search\\2", content, count=1)
+        content = re.sub(r"(<key>CFBundleDisplayName</key>\s*<string>)[^<]*(</string>)", r"\1Oxita Camera IP Search\2", content, count=1)
     else:
-        content = content.replace("</dict>", display_key + "\\n    <string>Oxita Camera IP Search</string>\\n</dict>", 1)
+        content = content.replace("</dict>", display_key + "\n    <string>Oxita Camera IP Search</string>\n</dict>", 1)
     key = "<key>NSLocalNetworkUsageDescription</key>"
     if key not in content:
         entry = key + "\n    <string>Discover and configure compatible cameras on your local network.</string>\n"
