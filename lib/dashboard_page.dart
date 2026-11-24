@@ -477,6 +477,30 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
     }
   }
 
+  Future<IpAddressProbeResult> _probeIpv4Conflict(String address) async {
+    if (Platform.isIOS) {
+      return const IpAddressProbeResult(IpAddressProbeState.unknown,
+        'No validated iOS interface-scoped conflict-probe backend is available.');
+    }
+    try {
+      final result = await const MethodChannel(
+        'com.oxita.camera_ip_search_mobile/local_network',
+      ).invokeMapMethod<String, dynamic>('probeIpv4Conflict', {
+        'address': address,
+        'interfaceName': interfaceName ?? '',
+      });
+      final state = result?['state'] as String? ?? 'unknown';
+      final evidence = result?['evidence'] as String? ?? 'No probe evidence returned.';
+      return IpAddressProbeResult(
+        state == 'conflict' ? IpAddressProbeState.conflict : IpAddressProbeState.unknown,
+        evidence,
+      );
+    } catch (error) {
+      return IpAddressProbeResult(IpAddressProbeState.unknown,
+        'Platform conflict probe unavailable: $error');
+    }
+  }
+
   Future<void> _previewIpAssignmentPlan() async {
     final targets = discovery.devices.where((d) => selected.contains(_key(d))).toList();
     if (targets.isEmpty) {
@@ -519,7 +543,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
         reservedAddresses: reserved,
       );
       final preflight = await const IpAssignmentPreflight().evaluate(
-        plan: plan.targets, inventoryAddresses: reserved,
+        plan: plan.targets, inventoryAddresses: reserved, probe: _probeIpv4Conflict,
       );
       final ready = preflight.where((r) => r.state == IpAssignmentPreflightState.ready).length;
       final report = preflight.map((r) =>
