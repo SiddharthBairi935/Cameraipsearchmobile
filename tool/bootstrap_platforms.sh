@@ -182,8 +182,8 @@ for gradle_file in [Path("android/app/build.gradle.kts"), Path("android/app/buil
     if gradle_file.exists():
         gradle_content = gradle_file.read_text()
         gradle_content, replacements = re.subn(
-            r"(?m)^(\\s*)compileSdk(?:Version)?\\s*(?:=\\s*)?(?:flutter\\.compileSdkVersion|\\d+)(\\s*(?://.*)?)$",
-            r"\\g<1>compileSdk = 36\\g<2>",
+            r"(?m)^(\s*)compileSdk(?:Version)?\s*(?:=\s*)?(?:flutter\.compileSdkVersion|\d+)(\s*(?://.*)?)$",
+            r"\g<1>compileSdk = 36\g<2>",
             gradle_content,
         )
         if replacements:
