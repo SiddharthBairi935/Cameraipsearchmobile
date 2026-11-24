@@ -89,7 +89,7 @@ class BatchOperationRunner {
     required BatchOperationHandler handler,
   }) async {
     if (_running || devices.isEmpty) throw StateError('A batch must be idle and contain at least one target.');
-    _results = BatchOperationPreflight().build(devices, operation);
+    _results = List<BatchTargetResult>.of(BatchOperationPreflight().build(devices, operation));
     _completed = 0;
     _cancelRequested = false;
     _running = true;
