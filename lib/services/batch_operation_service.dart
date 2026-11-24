@@ -36,7 +36,7 @@ class BatchOperationPreflight {
       final supported = switch (operation) {
         DeviceBatchOperation.readDeviceInformation => device.capabilities.contains('GetDeviceInformation') || device.discoverySources.any((s) => s.startsWith('ONVIF')),
         DeviceBatchOperation.readCapabilities => device.capabilities.contains('GetCapabilities') || device.discoverySources.any((s) => s.startsWith('ONVIF')),
-        DeviceBatchOperation.readNetworkInterfaces => device.capabilities.contains('GetNetworkInterfaces') || (device.ipv4ConfigurationKnown && device.networkInterfaceToken.isNotEmpty),
+        DeviceBatchOperation.readNetworkInterfaces => true,
         DeviceBatchOperation.configureStaticIpv4 => device.ipv4ConfigurationKnown && device.networkInterfaceToken.isNotEmpty && device.deviceServiceUrl.isNotEmpty,
         DeviceBatchOperation.reboot || DeviceBatchOperation.updateFirmware => false,
       };
