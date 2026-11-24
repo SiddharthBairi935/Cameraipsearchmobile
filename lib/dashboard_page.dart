@@ -555,6 +555,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
       final series = TextEditingController();
       final revision = TextEditingController();
       final region = TextEditingController();
+      if (!mounted) return;
       final targetValues = await showDialog<List<String>>(context: context, builder: (context) => AlertDialog(
         title: const Text('Confirm camera hardware identity'),
         content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
