@@ -8,19 +8,19 @@ class SensitiveDataRedactor {
   static final _digest = RegExp(r'\bDigest\s+[^\r\n]+', caseSensitive: false);
   static final _urlUserInfo = RegExp(r'(https?://)[^/@\s:]+:[^/@\s]+@', caseSensitive: false);
   static final _headerSecret = RegExp(
-    r'(?im)^(authorization|proxy-authorization|cookie|set-cookie)\\s*:\\s*[^\\r\\n]*',
+    r'(?im)^(authorization|proxy-authorization|cookie|set-cookie)\s*:\s*[^\r\n]*',
     caseSensitive: false,
   );
   static final _jsonSecret = RegExp(
-    r'''("(?:password|passwd|pwd|username|user_name|token|access_token|refresh_token|api[_-]?key|credential|secret|nonce)"\\s*:\\s*)"[^"]*"''',
+    r'''("(?:password|passwd|pwd|username|user_name|token|access_token|refresh_token|api[_-]?key|credential|secret|nonce)"\s*:\s*)"[^"]*"''',
     caseSensitive: false,
   );
   static final _querySecret = RegExp(
-    r'([?&](?:password|passwd|pwd|username|user_name|token|access_token|refresh_token|api[_-]?key|credential|secret|nonce)=)[^&#\\s]*',
+    r'([?&](?:password|passwd|pwd|username|user_name|token|access_token|refresh_token|api[_-]?key|credential|secret|nonce)=)[^&#\s]*',
     caseSensitive: false,
   );
   static final _xmlSecret = RegExp(
-    r'<(?:[A-Za-z0-9_.-]+:)?(Password|Username|Token|AccessToken|Nonce|Secret|BinarySecurityToken)(?:\\s[^>]*)?>.*?</(?:[A-Za-z0-9_.-]+:)?\\1>',
+    r'<(?:[A-Za-z0-9_.-]+:)?(Password|Username|Token|AccessToken|Nonce|Secret|BinarySecurityToken)(?:\s[^>]*)?>.*?</(?:[A-Za-z0-9_.-]+:)?\1>',
     caseSensitive: false,
     dotAll: true,
   );
