@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:crypto/crypto.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -545,10 +546,10 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
     final manifestFile = manifestPick.files.single;
     final packageFile = packagePick.files.single;
     try {
+      if (packageFile.size <= 0) throw const FormatException('Firmware package is empty.');
+      if (packageFile.size > 64 * 1024 * 1024) throw const FormatException('For safety, candidate validation is limited to 64 MiB per package on mobile.');
       final manifestBytes = manifestFile.bytes ?? (manifestFile.path == null ? null : await File(manifestFile.path!).readAsBytes());
-      final packageBytes = packageFile.bytes ?? (packageFile.path == null ? null : await File(packageFile.path!).readAsBytes());
-      if (manifestBytes == null || packageBytes == null) throw const FormatException('The selected files could not be read on this device.');
-      if (packageBytes.length > 64 * 1024 * 1024) throw const FormatException('For safety, candidate validation is limited to 64 MiB per package on mobile.');
+      if (manifestBytes == null || manifestBytes.length > 1024 * 1024) throw const FormatException('Manifest could not be read or exceeds the 1 MiB limit.');
       final decoded = jsonDecode(utf8.decode(manifestBytes));
       if (decoded is! Map<String, dynamic>) throw const FormatException('Manifest must be a JSON object.');
       final manifest = FirmwarePackageManifest.fromJson(decoded);
@@ -571,11 +572,28 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
       ));
       series.dispose(); revision.dispose(); region.dispose();
       if (targetValues == null || !mounted) return;
-      final result = FirmwarePackageValidator.validateCandidate(
+      final stream = packageFile.readStream ??
+          (packageFile.path == null ? null : File(packageFile.path!).openRead());
+      if (stream == null) throw const FormatException('The selected package does not expose a readable stream on this platform.');
+      final digestSink = AccumulatorSink<Digest>();
+      final digestInput = sha256.startChunkedConversion(digestSink);
+      var packageLength = 0;
+      await for (final chunk in stream) {
+        packageLength += chunk.length;
+        if (packageLength > 64 * 1024 * 1024) {
+          digestInput.close();
+          throw const FormatException('Firmware package exceeds the 64 MiB mobile validation limit.');
+        }
+        digestInput.add(chunk);
+      }
+      digestInput.close();
+      final actualHash = digestSink.events.single.toString();
+      final result = FirmwarePackageValidator.validateCandidateHash(
         manifest: manifest,
         target: FirmwareDeviceIdentity(vendor: device.manufacturer, productSeries: targetValues[0],
           model: device.model, hardwareRevision: targetValues[1], region: targetValues[2]),
-        packageBytes: packageBytes,
+        packageLength: packageLength,
+        actualSha256: actualHash,
       );
       await _record('Firmware candidate validation', device.ipAddress,
         result.candidateValidated ? 'Candidate validated' : 'Rejected',
