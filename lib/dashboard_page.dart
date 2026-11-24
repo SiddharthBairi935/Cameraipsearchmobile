@@ -21,6 +21,14 @@ import 'services/ip_assignment_preflight.dart';
 import 'services/batch_operation_service.dart';
 import 'services/firmware_package_validator.dart';
 
+class _FirmwareDigestSink implements Sink<Digest> {
+  Digest? value;
+  @override
+  void add(Digest data) => value = data;
+  @override
+  void close() {}
+}
+
 const red = Color(0xFFD43B49), canvas = Color(0xFF101216), surface = Color(0xFF191D23), muted = Color(0xFF9AA3B1);
 
 class CameraIpSearchApp extends StatelessWidget {
@@ -575,7 +583,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
       final stream = packageFile.readStream ??
           (packageFile.path == null ? null : File(packageFile.path!).openRead());
       if (stream == null) throw const FormatException('The selected package does not expose a readable stream on this platform.');
-      final digestSink = AccumulatorSink<Digest>();
+      final digestSink = _FirmwareDigestSink();
       final digestInput = sha256.startChunkedConversion(digestSink);
       var packageLength = 0;
       await for (final chunk in stream) {
@@ -587,7 +595,8 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
         digestInput.add(chunk);
       }
       digestInput.close();
-      final actualHash = digestSink.events.single.toString();
+      final actualHash = digestSink.value?.toString();
+      if (actualHash == null) throw const FormatException('Could not calculate the firmware package digest.');
       final result = FirmwarePackageValidator.validateCandidateHash(
         manifest: manifest,
         target: FirmwareDeviceIdentity(vendor: device.manufacturer, productSeries: targetValues[0],
