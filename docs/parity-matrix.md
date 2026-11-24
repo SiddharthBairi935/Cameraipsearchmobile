@@ -43,6 +43,17 @@ Status distinguishes a mobile code path from verified physical-device behavior.
 | Firmware update / reboot / NVR / bulk config | Not implemented | Same as desktop PR #4 |
 | ONVIF WS-Security / OS credential vault | Not implemented | Session-only HTTP Basic and Digest MD5/MD5-sess qop=auth challenge credentials; Digest SHA-256, auth-int and WS-Security are not implemented |
 
+## Latest desktop main additions (merged PR #11)
+
+| Desktop main feature | Mobile status | Notes |
+|---|---|---|
+| Official Oxita logo and branded header | Implemented | Bundled asset; works offline |
+| Oxita light red/white/graphite theme | Implemented | Mobile-native layout, not a pixel-identical Qt copy |
+| Inventory SQLite backup | Implemented | WAL checkpoint before copying the mobile database |
+| Inventory restore | Implemented | Validates tables and quick_check, retains pre-restore snapshot, rolls back on failure |
+| Expanded diagnostic secret redaction | Implemented | JSON keys, refresh tokens, API keys, query parameters, authorization headers and WS-Security AccessToken |
+| Desktop database interchange | Not supported | Mobile backup format is intentionally specific to the mobile SQLite schema |
+
 ## Platform-specific parity gaps
 
 - Android local-network permission, multicast lock, MTU and link-state diagnostics are bridged in the generated runner; verify targetSdk/API 37 behavior on real devices.
