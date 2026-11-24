@@ -59,6 +59,60 @@ class MainActivity : FlutterActivity() {
                 }
                 return@setMethodCallHandler
             }
+            if (call.method == "probeIpv4Conflict") {
+                val targetText = call.argument<String>("address").orEmpty()
+                val interfaceName = call.argument<String>("interfaceName").orEmpty()
+                try {
+                    val octets = targetText.split(".").map { it.toIntOrNull() }
+                    if (octets.size != 4 || octets.any { it == null || it < 0 || it > 255 }) {
+                        result.success(mapOf("state" to "unknown", "evidence" to "A valid IPv4 address is required."))
+                        return@setMethodCallHandler
+                    }
+                    val targetBytes = octets.map { it!! }.toByteArray()
+                    val target = java.net.InetAddress.getByAddress(targetBytes) as java.net.Inet4Address
+                    val networkInterface = NetworkInterface.getByName(interfaceName)
+                    if (networkInterface == null || !networkInterface.isUp || !networkInterface.isRunning) {
+                        result.success(mapOf("state" to "unknown", "evidence" to "The selected interface is unavailable or not running."))
+                        return@setMethodCallHandler
+                    }
+                    var attachedSubnet = false
+                    for (entry in networkInterface.interfaceAddresses) {
+                        val local = entry.address as? java.net.Inet4Address ?: continue
+                        val prefix = entry.networkPrefixLength.toInt()
+                        if (prefix !in 1..32) continue
+                        if (target.address.contentEquals(local.address)) {
+                            result.success(mapOf("state" to "conflict", "evidence" to "The proposed address belongs to this phone's selected interface."))
+                            return@setMethodCallHandler
+                        }
+                        val mask = if (prefix == 32) -1 else (-1 shl (32 - prefix))
+                        val targetValue = java.nio.ByteBuffer.wrap(target.address).int
+                        val localValue = java.nio.ByteBuffer.wrap(local.address).int
+                        if ((targetValue and mask) != (localValue and mask)) continue
+                        attachedSubnet = true
+                        if (prefix in 1..30) {
+                            val network = localValue and mask
+                            val broadcast = network or mask.inv()
+                            if (targetValue == network || targetValue == broadcast) {
+                                result.success(mapOf("state" to "unknown", "evidence" to "The target is the subnet network or broadcast address; no probe was sent."))
+                                return@setMethodCallHandler
+                            }
+                        }
+                    }
+                    if (!attachedSubnet) {
+                        result.success(mapOf("state" to "unknown", "evidence" to "Target is not on a subnet attached to the selected interface."))
+                        return@setMethodCallHandler
+                    }
+                    val responsive = target.isReachable(networkInterface, 1, 1200)
+                    if (responsive) {
+                        result.success(mapOf("state" to "conflict", "evidence" to "The target responded to an interface-scoped reachability probe; treat the address as occupied."))
+                    } else {
+                        result.success(mapOf("state" to "unknown", "evidence" to "No response was received. This is not proof that the address is free; assignment remains blocked."))
+                    }
+                } catch (error: Exception) {
+                    result.success(mapOf("state" to "unknown", "evidence" to "Android conflict probe failed: ${error.message ?: "unknown error"}"))
+                }
+                return@setMethodCallHandler
+            }
             if (call.method == "acquireMulticastLock") {
                 val wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
                 if (multicastLock == null) {
