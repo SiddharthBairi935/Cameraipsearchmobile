@@ -967,6 +967,63 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
     ),
   );
 
+  Future<void> _backupInventory() async {
+    try {
+      final directory = await getTemporaryDirectory();
+      final file = File('${directory.path}/oxita-mobile-inventory-${DateTime.now().toUtc().toIso8601String().replaceAll(':','-')}.db');
+      await store.exportBackup(file);
+      await Share.shareXFiles([XFile(file.path)], text: 'Oxita Camera IP Search inventory backup');
+      await _record('Inventory backup', file.uri.pathSegments.last, 'Prepared',
+          'SQLite integrity was checkpointed before the user shared the backup.');
+    } catch (error) {
+      await diagnostics.log('error', 'Inventory backup failed: $error');
+      _msg('Inventory backup failed: $error');
+    }
+  }
+
+  Future<void> _restoreInventory() async {
+    final picked = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['db', 'sqlite', 'sqlite3'],
+      withData: false,
+    );
+    if (picked == null || picked.files.single.path == null || !mounted) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Restore inventory backup?'),
+        content: const Text('The current inventory will be replaced. The selected file is integrity-checked first and a recovery snapshot of the current database is retained before restore. Only an Oxita mobile inventory backup is accepted.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Validate and restore')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      final recovery = await store.restoreBackup(File(picked.files.single.path!));
+      final restored = await store.load();
+      final history = await store.loadHistory();
+      for (final device in discovery.devices.toList()) {
+        discovery.removeDevice(device);
+      }
+      for (final device in restored) {
+        discovery.restoreDevice(device);
+      }
+      if (!mounted) return;
+      setState(() {
+        historyEntries = history;
+        _lastInventorySnapshot = jsonEncode(discovery.devices.map((d) => d.toJson()).toList());
+      });
+      await _record('Inventory restore', picked.files.single.name, 'Completed',
+          'Pre-restore recovery snapshot retained at ${recovery.path}.');
+      _msg('Inventory restored. A recovery snapshot was retained on this device.');
+    } catch (error) {
+      await diagnostics.log('error', 'Inventory restore failed: $error');
+      _msg('Inventory restore failed: $error');
+    }
+  }
+
   Widget _settings()=>FutureBuilder<String>(future:store.databasePath,builder:(context,s)=>ListView(padding:const EdgeInsets.all(18),children:[
     _heading('Application settings','Local inventory and platform information'),
     Card(child:Padding(padding:const EdgeInsets.all(14),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
@@ -976,6 +1033,8 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
     ]))),
     _detail('Platform',Platform.operatingSystem),_detail('Active interface',interfaceName??'Not selected'),
     _detail('Saved devices','${discovery.devices.length}'),_detail('SQLite integrity',databaseIntegrity),_detail('Version','0.3.0'),
+    _tool(Icons.backup,'Back up local inventory','Create a consistent SQLite backup of saved devices and operation history.',()=>unawaited(_backupInventory())),
+    _tool(Icons.settings_backup_restore,'Restore inventory backup','Validate a backup and retain a recovery snapshot before restoring.',()=>unawaited(_restoreInventory())),
     _tool(Icons.file_download,'Export inventory','Share the current inventory as CSV.',()=>unawaited(_export())),
     const SizedBox(height:12),const Text('iOS multicast/broadcast requires Apple multicast entitlement and physical-device validation. Android local-network permissions are handled by the native bootstrap runner.',style:TextStyle(color:muted,fontSize:12)),
   ]));
@@ -983,7 +1042,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
   @override
   Widget build(BuildContext context)=>Scaffold(
     appBar:AppBar(title:const Row(children:[
-      CircleAvatar(backgroundColor:red,child:Icon(Icons.camera_alt,color:Colors.white)),
+      ClipRRect(borderRadius:BorderRadius.circular(8),child:Image.asset('assets/oxita-logo.png',width:104,height:38,fit:BoxFit.contain,errorBuilder:(context,error,stack)=>const Icon(Icons.camera_alt,color:red,size:30))),
       SizedBox(width:10),Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
         Text('OXITA',style:TextStyle(fontSize:16,fontWeight:FontWeight.w900,letterSpacing:1.2)),
         Text('CAMERA DEVICE MANAGER',style:TextStyle(fontSize:9,color:muted,letterSpacing:1)),
