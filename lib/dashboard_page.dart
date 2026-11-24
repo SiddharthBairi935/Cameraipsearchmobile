@@ -4,6 +4,7 @@ import 'dart:io';
 // ignore: deprecated_member_use
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -14,6 +15,10 @@ import 'services/inventory_store.dart';
 import 'services/diagnostics_service.dart';
 import 'services/onvif_device_service.dart';
 import 'services/network_config_validator.dart';
+import 'services/ip_assignment_planner.dart';
+import 'services/ip_assignment_preflight.dart';
+import 'services/batch_operation_service.dart';
+import 'services/firmware_package_validator.dart';
 
 const red = Color(0xFFD43B49), canvas = Color(0xFF101216), surface = Color(0xFF191D23), muted = Color(0xFF9AA3B1);
 
@@ -40,13 +45,15 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
   late final DeviceDiscoveryService discovery;
   final store = InventoryStore();
   final diagnostics = DiagnosticsService();
+  final batchRunner = BatchOperationRunner();
   List<OperationHistoryEntry> historyEntries = [];
   final search = TextEditingController();
   final selected = <String>{};
   List<NetworkInterface> interfaces = [];
   Map<String, dynamic>? nativeInterfaceDetails;
   int tab = 0;
-  bool loading = true, checking = false;
+  bool loading = true, checking = false, batchRunning = false;
+  String batchProgress = '';
   String databaseIntegrity = 'Checking…';
   String? interfaceName, focusedDeviceKey;
   String manufacturerFilter = 'All manufacturers', statusFilter = 'All statuses';
@@ -408,6 +415,182 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
     }
   }
 
+  Future<void> _batchRefresh() async {
+    if (batchRunning) {
+      batchRunner.cancel();
+      if (mounted) setState(() => batchProgress = 'Cancellation requested…');
+      return;
+    }
+    final targets = selected.isEmpty
+        ? visible
+        : discovery.devices.where((d) => selected.contains(_key(d))).toList();
+    if (targets.isEmpty) {
+      _msg('Select or discover at least one device first.');
+      return;
+    }
+    final preflight = const BatchOperationPreflight().build(
+      targets, DeviceBatchOperation.readDeviceInformation,
+    );
+    final blocked = preflight.where((r) => r.state != BatchTargetState.ready).length;
+    if (blocked == targets.length) {
+      _msg('No selected device has a verified ONVIF read adapter. Review device identity and discovery evidence.');
+      return;
+    }
+    setState(() { batchRunning = true; batchProgress = 'Preparing ${targets.length} device(s)…'; });
+    await _record('Batch preflight', 'Device information', 'Prepared',
+        '${targets.length - blocked} ready; $blocked blocked. Sequential execution only.');
+    try {
+      final results = await batchRunner.start(
+        devices: targets,
+        operation: DeviceBatchOperation.readDeviceInformation,
+        handler: (device, _) async {
+          if (mounted) setState(() => batchProgress = 'Refreshing ${device.ipAddress} · ${batchRunner.completedCount + 1}/${batchRunner.totalCount}');
+          try {
+            await discovery.refreshDeviceInfo(device);
+            await _record('Batch device information', device.ipAddress, 'Completed', 'ONVIF information refresh completed.');
+            return null;
+          } catch (error) {
+            await _record('Batch device information', device.ipAddress, 'Failed', error.toString());
+            return error.toString();
+          }
+        },
+      );
+      final succeeded = results.where((r) => r.state == BatchTargetState.succeeded).length;
+      final failed = results.length - succeeded;
+      await _record('Batch device information', 'Selected devices', 'Completed',
+          '$succeeded succeeded; $failed skipped or failed.');
+      if (mounted) _msg('Batch refresh finished: $succeeded succeeded, $failed skipped or failed.');
+    } catch (error) {
+      await _record('Batch device information', 'Selected devices', 'Failed', error.toString());
+      if (mounted) _msg('Batch refresh failed: $error');
+    } finally {
+      if (mounted) setState(() { batchRunning = false; batchProgress = ''; selected.clear(); });
+    }
+  }
+
+  Future<void> _previewIpAssignmentPlan() async {
+    final targets = discovery.devices.where((d) => selected.contains(_key(d))).toList();
+    if (targets.isEmpty) {
+      _msg('Select at least one camera in Devices before creating an assignment plan.');
+      return;
+    }
+    final start = TextEditingController();
+    final end = TextEditingController();
+    final mask = TextEditingController(text: '255.255.255.0');
+    final values = await showDialog<List<String>>(context: context, builder: (context) => AlertDialog(
+      title: const Text('Plan multi-camera IPv4 addresses'),
+      content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Text('Dry-run plan for ${targets.length} selected device(s). No camera requests will be sent.', style: const TextStyle(color: muted, fontSize: 12)),
+        TextField(controller: start, decoration: const InputDecoration(labelText: 'Range start')),
+        TextField(controller: end, decoration: const InputDecoration(labelText: 'Range end')),
+        TextField(controller: mask, decoration: const InputDecoration(labelText: 'Subnet mask')),
+      ])),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+        FilledButton(onPressed: () => Navigator.pop(context, [start.text.trim(), end.text.trim(), mask.text.trim()]), child: const Text('Build plan')),
+      ],
+    ));
+    start.dispose(); end.dispose(); mask.dispose();
+    if (values == null || !mounted) return;
+    try {
+      final reserved = <String>{};
+      for (final device in discovery.devices) {
+        if (device.ipAddress.isNotEmpty) reserved.add(device.ipAddress);
+        if (device.ipv4Gateway.isNotEmpty) reserved.add(device.ipv4Gateway);
+        if (device.ipv4DnsServer.isNotEmpty) reserved.add(device.ipv4DnsServer);
+      }
+      for (final network in interfaces) {
+        for (final address in network.addresses) {
+          if (address.type == InternetAddressType.IPv4) reserved.add(address.address);
+        }
+      }
+      final plan = IpAssignmentPlanner.build(
+        startAddress: values[0], endAddress: values[1], subnetMask: values[2],
+        selectedDevices: targets.map((d) => IpAssignmentTarget(deviceId: d.id, currentAddress: d.ipAddress)).toList(),
+        reservedAddresses: reserved,
+      );
+      final preflight = await const IpAssignmentPreflight().evaluate(
+        plan: plan.targets, inventoryAddresses: reserved,
+      );
+      final ready = preflight.where((r) => r.state == IpAssignmentPreflightState.ready).length;
+      final report = preflight.map((r) =>
+        '${r.target.currentAddress} → ${r.target.proposedAddress}\n${r.state.name}: ${r.message}').join('\n\n');
+      await _record('IP assignment plan', 'Selected devices', 'Previewed',
+          '${plan.targets.length} proposed address(es); $ready passed live preflight. No changes sent.');
+      if (!mounted) return;
+      await showDialog<void>(context: context, builder: (context) => AlertDialog(
+        title: const Text('Assignment plan · dry run'),
+        content: SizedBox(width: 560, child: SingleChildScrollView(child: SelectableText(
+          '$report\n\nNo assignments were applied. This mobile build has no validated live ARP/DAD backend on the current platform; Unknown blocks assignment. A future apply workflow must repeat conflict checks immediately before each write.',
+          style: const TextStyle(fontSize: 12, height: 1.45),
+        ))),
+        actions: [FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Close'))],
+      ));
+    } on FormatException catch (error) {
+      await _record('IP assignment plan', 'Selected devices', 'Failed', error.message);
+      _msg(error.message);
+    } catch (error) {
+      await _record('IP assignment plan', 'Selected devices', 'Failed', error.toString());
+      _msg('Could not build assignment plan: $error');
+    }
+  }
+
+  Future<void> _validateFirmwareCandidate(CameraDevice device) async {
+    final manifestPick = await FilePicker.platform.pickFiles(
+      type: FileType.custom, allowedExtensions: ['json'], withData: true,
+    );
+    if (manifestPick == null || manifestPick.files.isEmpty || !mounted) return;
+    final packagePick = await FilePicker.platform.pickFiles(type: FileType.any, withData: true);
+    if (packagePick == null || packagePick.files.isEmpty || !mounted) return;
+    final manifestFile = manifestPick.files.single;
+    final packageFile = packagePick.files.single;
+    try {
+      final manifestBytes = manifestFile.bytes ?? (manifestFile.path == null ? null : await File(manifestFile.path!).readAsBytes());
+      final packageBytes = packageFile.bytes ?? (packageFile.path == null ? null : await File(packageFile.path!).readAsBytes());
+      if (manifestBytes == null || packageBytes == null) throw const FormatException('The selected files could not be read on this device.');
+      if (packageBytes.length > 64 * 1024 * 1024) throw const FormatException('For safety, candidate validation is limited to 64 MiB per package on mobile.');
+      final decoded = jsonDecode(utf8.decode(manifestBytes));
+      if (decoded is! Map<String, dynamic>) throw const FormatException('Manifest must be a JSON object.');
+      final manifest = FirmwarePackageManifest.fromJson(decoded);
+      final series = TextEditingController();
+      final revision = TextEditingController();
+      final region = TextEditingController();
+      final targetValues = await showDialog<List<String>>(context: context, builder: (context) => AlertDialog(
+        title: const Text('Confirm camera hardware identity'),
+        content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
+          _detail('Vendor', device.manufacturer), _detail('Model', device.model),
+          TextField(controller: series, decoration: const InputDecoration(labelText: 'Product series (verify from label)')),
+          TextField(controller: revision, decoration: const InputDecoration(labelText: 'Hardware revision (verify from label)')),
+          TextField(controller: region, decoration: const InputDecoration(labelText: 'Region (verify from label)')),
+        ])),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(context, [series.text.trim(), revision.text.trim(), region.text.trim()]), child: const Text('Validate candidate')),
+        ],
+      ));
+      series.dispose(); revision.dispose(); region.dispose();
+      if (targetValues == null || !mounted) return;
+      final result = FirmwarePackageValidator.validateCandidate(
+        manifest: manifest,
+        target: FirmwareDeviceIdentity(vendor: device.manufacturer, productSeries: targetValues[0],
+          model: device.model, hardwareRevision: targetValues[1], region: targetValues[2]),
+        packageBytes: packageBytes,
+      );
+      await _record('Firmware candidate validation', device.ipAddress,
+        result.candidateValidated ? 'Candidate validated' : 'Rejected',
+        '${packageFile.name}: ${result.message}');
+      if (!mounted) return;
+      await showDialog<void>(context: context, builder: (context) => AlertDialog(
+        title: Text(result.candidateValidated ? 'Candidate integrity matched' : 'Candidate rejected'),
+        content: Text('${packageFile.name}\n\n${result.message}\n\nThis validates metadata and SHA-256 only. It does not verify a vendor signature, authorize installation or enable flashing.'),
+        actions: [FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Close'))],
+      ));
+    } catch (error) {
+      await _record('Firmware candidate validation', device.ipAddress, 'Failed', error.toString());
+      _msg('Firmware candidate validation failed: $error');
+    }
+  }
+
   Future<void> _details(CameraDevice d) async {
     focusedDeviceKey = _key(d);
     await showModalBottomSheet<void>(context:context,isScrollControlled:true,backgroundColor:surface,builder:(context)=>DraggableScrollableSheet(
@@ -530,10 +713,16 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
     _tool(Icons.network_check,checking?'Cancel reachability checks':'Check reachability','Checks selected devices or all visible devices when none selected.',()=>unawaited(_reachability())),
     _tool(Icons.add_link,'Add device manually','Add a known camera IPv4 address.',()=>unawaited(_manual())),
     _tool(Icons.file_download,'Export inventory CSV','Share filtered inventory with device, network and capability fields.',()=>unawaited(_export())),
+    _tool(Icons.playlist_add_check,'Batch refresh selected cameras',batchRunning ? batchProgress : 'Sequential ONVIF read-only refresh; unsupported targets are skipped.',()=>unawaited(_batchRefresh())),
+    _tool(Icons.route,'Multi-camera IPv4 assignment planner','Create a dry-run range plan for selected cameras. Live conflict checks are fail-closed.',()=>unawaited(_previewIpAssignmentPlan())),
+    if (_focusedDevice != null) _tool(Icons.verified_outlined,'Validate firmware package candidate','Check manifest identity and SHA-256 for the selected camera. Does not flash.',()=>unawaited(_validateFirmwareCandidate(_focusedDevice!))),
     const SizedBox(height:14),_heading('Feature availability','Unimplemented desktop features stay unavailable'),
     _cap('ONVIF discovery and enrichment','Available when supported',true),
     _cap('TCP reachability and bounded scan','Available',true),
-    _cap('Static IPv4 over ONVIF','Conditional · verified interface required',true),
+    _cap('Static IPv4 over ONVIF','Single-camera workflow · verified interface required',true),
+    _cap('Batch read-only refresh','Sequential, per-device preflight and cancellation',true),
+    _cap('Multi-camera IPv4 planning','Dry-run only · live ARP/DAD backend unavailable on mobile',false),
+    _cap('Firmware package candidate validation','Metadata + SHA-256 only · no signature verification or flashing',true),
     _cap('Bulk image settings','Not implemented',false),
     _cap('Activation / reboot / firmware','Not implemented',false),
     _cap('NVR channels','Not implemented',false),
@@ -561,7 +750,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
           style: TextStyle(color: muted, height: 1.45),
         ))),
         _cap('Static IPv4 configuration', 'Requires a refreshed ONVIF interface profile', false),
-        _cap('Firmware update / reboot', 'Not implemented in desktop PR #4', false),
+        _cap('Firmware package validation', 'Candidate metadata and SHA-256 only; flashing unavailable', false),
       ]);
     }
     final canConfigure = device.ipv4ConfigurationKnown && device.networkInterfaceToken.isNotEmpty;
@@ -617,10 +806,11 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
       _heading('Firmware status', 'Read-only information from the camera'),
       const SizedBox(height: 8),
       _detail('Reported firmware', device.firmwareVersion),
+      OutlinedButton.icon(onPressed: () => unawaited(_validateFirmwareCandidate(device)), icon: const Icon(Icons.verified_outlined), label: const Text('Validate package candidate')),
       const Card(child: ListTile(
         leading: Icon(Icons.lock_outline, color: muted),
-        title: Text('Firmware update unavailable'),
-        subtitle: Text('No verified firmware upload, signature validation or recovery workflow is implemented in desktop PR #4.'),
+        title: Text('Firmware flashing unavailable'),
+        subtitle: Text('The desktop main branch only validates package metadata and SHA-256 candidates. Vendor signature verification, authorized transport and recovery are not implemented.'),
       )),
       const SizedBox(height: 8),
       _cap('Reboot / factory reset', 'Not implemented', false),
