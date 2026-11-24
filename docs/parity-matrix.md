@@ -1,4 +1,6 @@
-# Desktop PR #5 → Mobile parity matrix
+# Desktop PR #5 → Mobile parity matrix (historical baseline)
+
+The current source of truth has moved to desktop `main`. See [desktop-main-parity.md](desktop-main-parity.md) for the current feature mapping, including IP assignment planning, batch preflight/runner and firmware candidate validation.
 
 Source of truth: https://github.com/Karishma6543/camera-ip-search/pull/5 (`release/preproduction-hardening`), stacked on PR #4.
 
