@@ -41,7 +41,7 @@ class CameraIpSearchApp extends StatelessWidget {
       brightness: Brightness.light,
       scaffoldBackgroundColor: canvas,
       colorScheme: ColorScheme.fromSeed(seedColor: red, brightness: Brightness.light, surface: surface),
-      appBarTheme: const AppBarTheme(backgroundColor: surface, foregroundColor: Color(0xFF252A32), elevation: 0, centerTitle: false),
+      appBarTheme: AppBarTheme(backgroundColor: surface, foregroundColor: Color(0xFF252A32), elevation: 0, centerTitle: false),
       cardTheme: CardThemeData(
         color: surface,
         elevation: 0,
@@ -50,7 +50,7 @@ class CameraIpSearchApp extends StatelessWidget {
           side: const BorderSide(color: Color(0xFFE5E8ED)),
         ),
       ),
-      navigationBarTheme: const NavigationBarThemeData(
+      navigationBarTheme: NavigationBarThemeData(
         backgroundColor: surface,
         indicatorColor: Color(0xFFFCEBED),
         labelTextStyle: WidgetStatePropertyAll(TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
