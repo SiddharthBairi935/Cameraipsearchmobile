@@ -17,7 +17,7 @@ This matrix intentionally excludes desktop PR #10 because it is still an unmerge
 | Batch identity/address duplicate checks and adapter capability gating | Dart batch preflight | Implemented; unsupported operations fail closed |
 | IPv4 assignment range planner | Dart dry-run planner and selected-device mapping | Implemented; bounded to 65,536 addresses and max 256 devices |
 | Inventory/local reservation checks for IP assignment | Planner reserves all known inventory IPs, gateways, DNS and local interface IPs | Implemented |
-| Live ARP duplicate-address preflight | Preflight state model is implemented | **Blocked on mobile:** no validated interface-scoped ARP/DAD backend. Missing/unknown result blocks assignment; no writes are enabled |
+| Live ARP duplicate-address preflight | Preflight state model is implemented | **Partial on mobile:** Android has a positive-only interface-scoped reachability probe. A response is treated as occupied; no response is Unknown, never Clear. iOS has no validated backend. Missing/unknown result blocks assignment; no writes are enabled |
 | Firmware package metadata and SHA-256 candidate validator | Dart validator and file-picker workflow for JSON manifest + package | Implemented; max 64 MiB package size in mobile UI |
 | Firmware signature verification / authorized update transport / recovery | Not present in desktop main | Not implemented; flashing stays disabled |
 | Vendor-specific adapters and activation/reboot/NVR/bulk image operations | Not present as verified implementations in desktop main | Not implemented; remains disabled |
