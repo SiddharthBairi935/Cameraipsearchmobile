@@ -117,6 +117,20 @@ KOTLIN
 python3 - <<'PY'
 from pathlib import Path
 
+# file_picker's Android lifecycle dependency requires compileSdk 36+.
+for gradle_file in [Path("android/app/build.gradle.kts"), Path("android/app/build.gradle")]:
+    if gradle_file.exists():
+        gradle_content = gradle_file.read_text()
+        gradle_content = gradle_content.replace(
+            "compileSdk = flutter.compileSdkVersion",
+            "compileSdk = 36",
+        )
+        gradle_content = gradle_content.replace(
+            "compileSdkVersion flutter.compileSdkVersion",
+            "compileSdkVersion 36",
+        )
+        gradle_file.write_text(gradle_content)
+
 manifest = Path("android/app/src/main/AndroidManifest.xml")
 if manifest.exists():
     content = manifest.read_text()
