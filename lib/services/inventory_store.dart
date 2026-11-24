@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -111,6 +112,70 @@ class InventoryStore {
   Future<String> integrityCheck() async {
     final rows = await (await _db).rawQuery('PRAGMA quick_check');
     return rows.isEmpty ? 'No integrity result returned' : rows.first.values.first.toString();
+  }
+
+  /// Creates a consistent, standalone SQLite backup after checkpointing WAL.
+  Future<void> exportBackup(File destination) async {
+    final db = await _db;
+    await db.rawQuery('PRAGMA wal_checkpoint(FULL)');
+    final source = File(db.path);
+    await db.close();
+    _database = null;
+    await source.copy(destination.path);
+    await _db; // Reopen the live store for continued app use.
+  }
+
+  /// Validates a mobile inventory backup, retains a pre-restore snapshot, and
+  /// rolls back to that snapshot if the restored database fails integrity checks.
+  Future<File> restoreBackup(File backup) async {
+    final validationDb = await openDatabase(
+      backup.path,
+      readOnly: true,
+      singleInstance: false,
+    );
+    try {
+      final integrity = await validationDb.rawQuery('PRAGMA quick_check');
+      final status = integrity.isEmpty ? '' : integrity.first.values.first.toString();
+      if (status.toLowerCase() != 'ok') {
+        throw StateError('Backup integrity check failed: $status');
+      }
+      final tables = await validationDb.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('devices','operation_history')",
+      );
+      final names = tables.map((row) => row['name']).toSet();
+      if (!names.contains('devices') || !names.contains('operation_history')) {
+        throw StateError('This file is not a compatible Oxita mobile inventory backup.');
+      }
+    } finally {
+      await validationDb.close();
+    }
+
+    final live = await _db;
+    await live.rawQuery('PRAGMA wal_checkpoint(FULL)');
+    final livePath = live.path;
+    await live.close();
+    _database = null;
+    final liveFile = File(livePath);
+    final recovery = File('$livePath.pre-restore-${DateTime.now().toUtc().microsecondsSinceEpoch}');
+    await liveFile.copy(recovery.path);
+    try {
+      await backup.copy(livePath);
+      final restored = await _db;
+      final check = await restored.rawQuery('PRAGMA quick_check');
+      final result = check.isEmpty ? '' : check.first.values.first.toString();
+      if (result.toLowerCase() != 'ok') {
+        throw StateError('Restored database failed integrity validation: $result');
+      }
+      await restored.query('devices', limit: 1);
+      await restored.query('operation_history', limit: 1);
+      return recovery;
+    } catch (_) {
+      await _database?.close();
+      _database = null;
+      await recovery.copy(livePath);
+      await _db;
+      rethrow;
+    }
   }
 
   Future<void> close() async {
