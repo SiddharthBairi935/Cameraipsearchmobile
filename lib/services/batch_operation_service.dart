@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import '../models/camera_device.dart';
 
 enum DeviceBatchOperation { readDeviceInformation, readCapabilities, readNetworkInterfaces, configureStaticIpv4, reboot, updateFirmware }
@@ -60,13 +62,9 @@ class BatchOperationPreflight {
   }
 
   String _canonicalIpv4(String value) {
-    final parsed = Uri.tryParse('http://$value');
-    if (parsed == null || parsed.host.isEmpty || parsed.host.contains(':')) return '';
-    final parts = parsed.host.split('.');
-    if (parts.length != 4) return '';
-    final nums = parts.map(int.tryParse).toList();
-    if (nums.any((v) => v == null || v < 0 || v > 255)) return '';
-    return nums.join('.');
+    final parsed = InternetAddress.tryParse(value.trim());
+    if (parsed == null || parsed.type != InternetAddressType.IPv4) return '';
+    return parsed.address;
   }
 }
 
