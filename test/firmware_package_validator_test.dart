@@ -14,6 +14,14 @@ void main() {
     expect(result.candidateValidated, isTrue);
     expect(result.message, contains('flashing is not enabled'));
   });
+  test('validates streamed SHA-256 digest without loading the package into memory', () {
+    final data = [1, 2, 3, 4, 5];
+    final result = FirmwarePackageValidator.validateCandidateHash(
+      manifest: manifest(data), target: target, packageLength: data.length,
+      actualSha256: sha256.convert(data).toString(),
+    );
+    expect(result.candidateValidated, isTrue);
+  });
   test('rejects hardware revision, region or model mismatch', () {
     final wrong = FirmwareDeviceIdentity(vendor: 'Acme', productSeries: 'Pro', model: 'AC-200', hardwareRevision: 'Rev A', region: 'IN');
     expect(FirmwarePackageValidator.validateCandidate(manifest: manifest(bytes), target: wrong, packageBytes: bytes).state, FirmwareValidationState.targetMismatch);
