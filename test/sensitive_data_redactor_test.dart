@@ -39,6 +39,26 @@ void main() {
       expect(result, contains('[REDACTED]'));
     });
 
+    test('redacts JSON API keys, refresh tokens and query-string credentials', () {
+      final result = SensitiveDataRedactor.redact(
+        '{"api_key":"key-123","refresh_token":"refresh-456"} '
+        'https://camera.local/onvif?access_token=query-789&nonce=nonce-abc',
+      );
+      expect(result, isNot(contains('key-123')));
+      expect(result, isNot(contains('refresh-456')));
+      expect(result, isNot(contains('query-789')));
+      expect(result, isNot(contains('nonce-abc')));
+    });
+
+    test('redacts authorization headers and WS-Security AccessToken XML', () {
+      final result = SensitiveDataRedactor.redact(
+        'Authorization: Bearer header-secret\\n'
+        '<wsse:AccessToken>wsse-secret</wsse:AccessToken>',
+      );
+      expect(result, isNot(contains('header-secret')));
+      expect(result, isNot(contains('wsse-secret')));
+    });
+
     test('truncates unusually long messages', () {
       final result = SensitiveDataRedactor.redact('x' * 9000);
       expect(result.length, lessThanOrEqualTo(8210));
