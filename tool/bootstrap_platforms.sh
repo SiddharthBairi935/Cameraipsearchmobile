@@ -172,18 +172,26 @@ python3 - <<'PY'
 from pathlib import Path
 
 # file_picker's Android lifecycle dependency requires compileSdk 36+.
+# Flutter templates vary between Groovy/Kotlin DSL and SDK releases, so
+# normalize the generated compileSdk declaration rather than matching one
+# template spelling. Fail loudly if the template changes unexpectedly.
+import re
+
+compile_sdk_updated = False
 for gradle_file in [Path("android/app/build.gradle.kts"), Path("android/app/build.gradle")]:
     if gradle_file.exists():
         gradle_content = gradle_file.read_text()
-        gradle_content = gradle_content.replace(
-            "compileSdk = flutter.compileSdkVersion",
-            "compileSdk = 36",
+        gradle_content, replacements = re.subn(
+            r"(?m)^(\\s*)compileSdk(?:Version)?\\s*(?:=\\s*)?(?:flutter\\.compileSdkVersion|\\d+)(\\s*(?://.*)?)$",
+            r"\\g<1>compileSdk = 36\\g<2>",
+            gradle_content,
         )
-        gradle_content = gradle_content.replace(
-            "compileSdkVersion flutter.compileSdkVersion",
-            "compileSdkVersion 36",
-        )
-        gradle_file.write_text(gradle_content)
+        if replacements:
+            compile_sdk_updated = True
+            gradle_file.write_text(gradle_content)
+            print(f"Set {gradle_file} compileSdk to 36.")
+if not compile_sdk_updated:
+    raise SystemExit("Could not find a generated Android compileSdk declaration to raise to 36.")
 
 manifest = Path("android/app/src/main/AndroidManifest.xml")
 if manifest.exists():
