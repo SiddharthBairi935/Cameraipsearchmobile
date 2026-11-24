@@ -43,3 +43,16 @@ This matrix intentionally excludes desktop PR #10 because it is still an unmerge
 7. Perform security review, dependency review and support-bundle privacy inspection.
 
 A passing unit test or Android build is not proof of camera interoperability. This branch is a pre-production parity implementation, not production certification.
+
+
+## Latest desktop main update (PR #11)
+
+Desktop main now includes the official Oxita logo asset, SQLite online backup/restore, retained pre-restore recovery snapshots, backup corruption/integrity tests, and additional security redaction coverage. Mobile parity now includes:
+- The same official Oxita logo bundled as a Flutter asset and used in the app header.
+- Consistent SQLite backup after WAL checkpoint.
+- Backup validation before restore, pre-restore recovery snapshot retention, post-restore integrity checks and rollback to the snapshot on failure.
+- Tests for backup/restore and corrupt-backup rejection.
+
+The mobile backup is for the mobile app's SQLite schema. It is not a direct import/export format for the desktop Qt database.
+
+Remaining platform/release gaps are physical-device discovery and configuration evidence, iOS multicast entitlement, Android/iOS native UI smoke tests, signed mobile builds, and release packaging. Desktop itself still lacks vendor-specific CP Plus/Hikvision/Prama adapters, activation, firmware flashing, reboot, NVR channel management and bulk image settings; mobile must keep these unavailable until the desktop has verified implementations and protocols.
