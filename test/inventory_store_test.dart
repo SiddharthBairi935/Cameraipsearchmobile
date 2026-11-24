@@ -66,6 +66,37 @@ void main() {
     await store.close();
   });
 
+  test('creates a consistent backup and restores with a retained recovery snapshot', () async {
+    final path = '${directory.path}/inventory.sqlite';
+    final backupPath = '${directory.path}/backup.sqlite';
+    final store = InventoryStore(databasePath: path);
+    await store.recordOperation(operation: 'Before backup', outcome: 'Completed');
+    await store.exportBackup(File(backupPath));
+    await store.recordOperation(operation: 'After backup', outcome: 'Completed');
+    expect(await store.loadHistory(), hasLength(2));
+
+    final recovery = await store.restoreBackup(File(backupPath));
+    expect(await recovery.exists(), isTrue);
+    final restored = await store.loadHistory();
+    expect(restored, hasLength(1));
+    expect(restored.single.operation, 'Before backup');
+    await store.close();
+  });
+
+  test('rejects a corrupt backup without changing the live inventory', () async {
+    final path = '${directory.path}/inventory.sqlite';
+    final badBackup = File('${directory.path}/invalid.sqlite');
+    await badBackup.writeAsString('not a sqlite database', flush: true);
+    final store = InventoryStore(databasePath: path);
+    await store.recordOperation(operation: 'Keep me', outcome: 'Completed');
+
+    await expectLater(store.restoreBackup(badBackup), throwsA(anything));
+    final history = await store.loadHistory();
+    expect(history, hasLength(1));
+    expect(history.single.operation, 'Keep me');
+    await store.close();
+  });
+
   test('does not overwrite a damaged database file during open', () async {
     final path = '${directory.path}/damaged.sqlite';
     final file = File(path);
