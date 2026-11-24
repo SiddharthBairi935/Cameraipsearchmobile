@@ -1004,12 +1004,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
       final recovery = await store.restoreBackup(File(picked.files.single.path!));
       final restored = await store.load();
       final history = await store.loadHistory();
-      for (final device in discovery.devices.toList()) {
-        discovery.removeDevice(device);
-      }
-      for (final device in restored) {
-        discovery.restoreDevice(device);
-      }
+      discovery.replaceInventory(restored);
       if (!mounted) return;
       setState(() {
         historyEntries = history;
