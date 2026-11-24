@@ -176,6 +176,7 @@ from pathlib import Path
 # normalize the generated compileSdk declaration rather than matching one
 # template spelling. Fail loudly if the template changes unexpectedly.
 import re
+import os
 
 compile_sdk_updated = False
 for gradle_file in [Path("android/app/build.gradle.kts"), Path("android/app/build.gradle")]:
@@ -192,6 +193,25 @@ for gradle_file in [Path("android/app/build.gradle.kts"), Path("android/app/buil
             print(f"Set {gradle_file} compileSdk to 36.")
 if not compile_sdk_updated:
     raise SystemExit("Could not find a generated Android compileSdk declaration to raise to 36.")
+
+# Some Flutter plugins ship Android library modules pinned to API 34.
+# The app-level compileSdk alone does not override those library modules.
+pub_cache = Path(os.environ.get("PUB_CACHE", str(Path.home() / ".pub-cache")))
+for gradle_file in pub_cache.glob("hosted/pub.dev/*/android/build.gradle*"):
+    content = gradle_file.read_text()
+    updated = re.sub(
+        r"(?m)^(\\s*)compileSdkVersion\\s+\\d+",
+        r"\\g<1>compileSdkVersion 36",
+        content,
+    )
+    updated = re.sub(
+        r"(?m)^(\\s*)compileSdk\\s*=\\s*\\d+",
+        r"\\g<1>compileSdk = 36",
+        updated,
+    )
+    if updated != content:
+        gradle_file.write_text(updated)
+        print(f"Raised Android plugin compileSdk to 36: {gradle_file.parent.parent.name}")
 
 manifest = Path("android/app/src/main/AndroidManifest.xml")
 if manifest.exists():
