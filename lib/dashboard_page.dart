@@ -374,7 +374,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
         Text('Static IPv4 changes require a verified ONVIF interface token. Preview validates values without sending a request. Applying may interrupt connectivity; there is no automatic rollback.'),
         SizedBox(height: 10),
         Text('Feature availability', style: TextStyle(fontWeight: FontWeight.w800)),
-        Text('Bulk image settings, camera activation, firmware update, reboot and NVR channels are not implemented in the desktop release candidate and remain unavailable here.'),
+        Text('Bulk image settings, activation, reboot, NVR channels and firmware flashing are not implemented in desktop main and remain unavailable here. Firmware package metadata/SHA-256 candidate validation is available; it does not authorize flashing.'),
       ])),
       actions: [FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Close'))],
     ));
@@ -614,7 +614,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
           OutlinedButton.icon(onPressed:d.ipv4ConfigurationKnown && d.networkInterfaceToken.isNotEmpty?(){Navigator.pop(context);unawaited(_staticIp(d));}:null,icon:const Icon(Icons.settings_ethernet),label:const Text('Apply static IPv4')),
           OutlinedButton.icon(onPressed:()async{final u=Uri(scheme:'http',host:d.ipAddress);if(await canLaunchUrl(u))await launchUrl(u,mode:LaunchMode.externalApplication);},icon:const Icon(Icons.open_in_browser),label:const Text('Open web UI')),
         ]),
-        const SizedBox(height:12),const Text('Bulk configuration, activation, firmware upgrade, reboot and NVR channels are not implemented in desktop PR #4 and remain unavailable.',style:TextStyle(color:muted,fontSize:12)),
+        const SizedBox(height:12),const Text('Bulk configuration, activation, firmware flashing, reboot and NVR channels are not implemented in desktop main and remain unavailable.',style:TextStyle(color:muted,fontSize:12)),
       ])));
   }
 
