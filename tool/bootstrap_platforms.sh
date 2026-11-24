@@ -200,13 +200,13 @@ pub_cache = Path(os.environ.get("PUB_CACHE", str(Path.home() / ".pub-cache")))
 for gradle_file in pub_cache.glob("hosted/pub.dev/*/android/build.gradle*"):
     content = gradle_file.read_text()
     updated = re.sub(
-        r"(?m)^(\\s*)compileSdkVersion\\s+\\d+",
-        r"\\g<1>compileSdkVersion 36",
+        r"(?m)^(\s*)compileSdkVersion\s+\d+",
+        r"\g<1>compileSdkVersion 36",
         content,
     )
     updated = re.sub(
-        r"(?m)^(\\s*)compileSdk\\s*=\\s*\\d+",
-        r"\\g<1>compileSdk = 36",
+        r"(?m)^(\s*)compileSdk\s*=\s*\d+",
+        r"\g<1>compileSdk = 36",
         updated,
     )
     if updated != content:
