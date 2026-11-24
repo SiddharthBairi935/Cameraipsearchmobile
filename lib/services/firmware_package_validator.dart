@@ -35,6 +35,18 @@ class FirmwarePackageValidator {
     required FirmwarePackageManifest manifest,
     required FirmwareDeviceIdentity target,
     required List<int> packageBytes,
+  }) => validateCandidateHash(
+    manifest: manifest,
+    target: target,
+    packageLength: packageBytes.length,
+    actualSha256: packageBytes.isEmpty ? '' : sha256.convert(packageBytes).toString(),
+  );
+
+  static FirmwareValidationResult validateCandidateHash({
+    required FirmwarePackageManifest manifest,
+    required FirmwareDeviceIdentity target,
+    required int packageLength,
+    required String actualSha256,
   }) {
     final values = [manifest.vendor, manifest.productSeries, manifest.model, manifest.hardwareRevision, manifest.region, manifest.version,
       target.vendor, target.productSeries, target.model, target.hardwareRevision, target.region];
@@ -53,11 +65,11 @@ class FirmwarePackageValidator {
       return const FirmwareValidationResult(FirmwareValidationState.invalidPackageHash,
         'Manifest SHA-256 must contain exactly 64 hexadecimal characters.');
     }
-    if (packageBytes.isEmpty) {
+    if (packageLength <= 0) {
       return const FirmwareValidationResult(FirmwareValidationState.emptyPackage, 'Firmware package is empty.');
     }
-    final actual = sha256.convert(packageBytes).toString();
-    if (actual.toLowerCase() != manifest.sha256.trim().toLowerCase()) {
+    if (!RegExp(r'^[0-9a-fA-F]{64}$').hasMatch(actualSha256.trim()) ||
+        actualSha256.toLowerCase() != manifest.sha256.trim().toLowerCase()) {
       return const FirmwareValidationResult(FirmwareValidationState.packageHashMismatch,
         'Firmware package SHA-256 does not match its manifest.');
     }
