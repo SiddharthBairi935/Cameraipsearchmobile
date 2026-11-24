@@ -8,8 +8,9 @@ class SensitiveDataRedactor {
   static final _digest = RegExp(r'\bDigest\s+[^\r\n]+', caseSensitive: false);
   static final _urlUserInfo = RegExp(r'(https?://)[^/@\s:]+:[^/@\s]+@', caseSensitive: false);
   static final _headerSecret = RegExp(
-    r'(?im)^(authorization|proxy-authorization|cookie|set-cookie)\s*:\s*[^\r\n]*',
+    r'^(authorization|proxy-authorization|cookie|set-cookie)\s*:\s*[^\r\n]*',
     caseSensitive: false,
+    multiLine: true,
   );
   static final _jsonSecret = RegExp(
     r'''("(?:password|passwd|pwd|username|user_name|token|access_token|refresh_token|api[_-]?key|credential|secret|nonce)"\s*:\s*)"[^"]*"''',
