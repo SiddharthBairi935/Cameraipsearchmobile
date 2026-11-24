@@ -56,6 +56,16 @@ class DeviceDiscoveryService extends ChangeNotifier {
     if (key.isNotEmpty) _devices[key] = device;
   }
 
+  void replaceInventory(List<CameraDevice> devices) {
+    if (_disposed) return;
+    _devices.clear();
+    for (final device in devices) {
+      final key = device.macAddress.isNotEmpty ? device.macAddress : device.ipAddress;
+      if (key.isNotEmpty) _devices[key] = device;
+    }
+    notifyListeners();
+  }
+
   void updateReachability(CameraDevice device, String result) {
     if (_disposed) return;
     final key = device.macAddress.isNotEmpty ? device.macAddress : device.ipAddress;
