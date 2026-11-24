@@ -29,17 +29,42 @@ class _FirmwareDigestSink implements Sink<Digest> {
   void close() {}
 }
 
-const red = Color(0xFFD43B49), canvas = Color(0xFF101216), surface = Color(0xFF191D23), muted = Color(0xFF9AA3B1);
+const red = Color(0xFFC92D3B), canvas = Color(0xFFF3F4F6), surface = Color(0xFFFFFFFF), muted = Color(0xFF7B828E);
 
 class CameraIpSearchApp extends StatelessWidget {
   const CameraIpSearchApp({super.key});
   @override
   Widget build(BuildContext context) => MaterialApp(
     title: 'Oxita Camera Device Manager', debugShowCheckedModeBanner: false,
-    theme: ThemeData(useMaterial3: true, brightness: Brightness.dark, scaffoldBackgroundColor: canvas,
-      colorScheme: ColorScheme.fromSeed(seedColor: red, brightness: Brightness.dark, surface: surface),
-      cardTheme: CardThemeData(color: surface, elevation: 0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18), side: const BorderSide(color: Color(0xFF2B3039)))),
-      inputDecorationTheme: InputDecorationTheme(filled: true, fillColor: const Color(0xFF20252D), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none))),
+    theme: ThemeData(
+      useMaterial3: true,
+      brightness: Brightness.light,
+      scaffoldBackgroundColor: canvas,
+      colorScheme: ColorScheme.fromSeed(seedColor: red, brightness: Brightness.light, surface: surface),
+      appBarTheme: const AppBarTheme(backgroundColor: surface, foregroundColor: Color(0xFF252A32), elevation: 0, centerTitle: false),
+      cardTheme: CardThemeData(
+        color: surface,
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: const BorderSide(color: Color(0xFFE5E8ED)),
+        ),
+      ),
+      navigationBarTheme: const NavigationBarThemeData(
+        backgroundColor: surface,
+        indicatorColor: Color(0xFFFCEBED),
+        labelTextStyle: WidgetStatePropertyAll(TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: surface,
+        hintStyle: const TextStyle(color: Color(0xFF89909B)),
+        labelStyle: const TextStyle(color: Color(0xFF69717D)),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFDCE1E8))),
+        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFDCE1E8))),
+        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: red, width: 1.4)),
+      ),
+    ),
     home: const DashboardPage(),
   );
 }
@@ -647,7 +672,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
     focusedDeviceKey = _key(d);
     await showModalBottomSheet<void>(context:context,isScrollControlled:true,backgroundColor:surface,builder:(context)=>DraggableScrollableSheet(
       expand:false,initialChildSize:.88,maxChildSize:.96,builder:(context,scroll)=>ListView(controller:scroll,padding:const EdgeInsets.all(20),children:[
-        Center(child:Container(width:38,height:4,decoration:BoxDecoration(color:Colors.white24,borderRadius:BorderRadius.circular(4)))),
+        Center(child:Container(width:38,height:4,decoration:BoxDecoration(color:Colors.black12,borderRadius:BorderRadius.circular(4)))),
         const SizedBox(height:18),Text(d.userLabel.isEmpty?d.ipAddress:d.userLabel,style:const TextStyle(fontSize:23,fontWeight:FontWeight.w800)),
         Text('${d.ipAddress} · ${d.manufacturer} · ${d.model}',style:const TextStyle(color:muted)),
         const SizedBox(height:12),
