@@ -8,7 +8,7 @@ class SsdpDiscoveryParser {
   static CameraDevice? parseResponse(List<int> payload, InternetAddress sender, String interfaceName) {
     if (payload.isEmpty || payload.length > 16 * 1024 ||
         sender.type != InternetAddressType.IPv4 || sender.isLoopback ||
-        sender.isMulticast || sender.address == '0.0.0.0') return null;
+        sender.isMulticast || sender.address == '0.0.0.0') {\n      return null;\n    }
     final text = latin1.decode(payload, allowInvalid: true);
     final lines = text.split(RegExp(r'\r?\n'));
     if (lines.isEmpty ||
