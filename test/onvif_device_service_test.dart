@@ -114,7 +114,8 @@ void main() {
       await server.close(force: true);
     }
   });
- () async {
+
+  test('factory reset rejects unsupported modes without sending a request', () async {
     final device = CameraDevice(
       id: '127.0.0.1',
       ipAddress: '127.0.0.1',
