@@ -73,3 +73,10 @@ The desktop PR #15 security workflow introduced CodeQL and dependency-review gat
 Automated Flutter analysis/tests and Android debug builds are CI-validated on the exact commit shown in the Actions run. Green CI is not proof of camera interoperability. Physical Android/iOS discovery, iOS multicast entitlement, real-camera ONVIF behavior, network-changing operations, credential-vault implementation, signing and release certification remain separate gates.
 
 See [desktop-to-mobile parity](docs/desktop-main-parity.md), [security review](docs/security-and-privacy-review.md), and [mobile release engineering](docs/release-engineering-mobile.md).
+
+
+## Multi-camera static IPv4
+
+The mobile app now includes a sequential bulk assignment workflow: select cameras, build a range plan, review per-camera preflight, confirm, and then re-check each proposed address immediately before its ONVIF write. Each camera's result is recorded separately and the inventory is updated only after the ONVIF service verifies the new address.
+
+**Safety limitation:** current Android probing treats a responding address as occupied and a silent address as unknown; iOS has no validated interface-scoped probe. Neither platform treats silence as proof of availability. Therefore the apply confirmation is shown only if every target returns an explicit `clear` result, which current platform builds do not yet produce. The workflow is implemented, but bulk writes remain intentionally blocked until a real ARP/DAD backend is validated on physical devices.
