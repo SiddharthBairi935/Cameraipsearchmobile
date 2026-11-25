@@ -905,6 +905,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
       ]);
     }
     final canConfigure = device.ipv4ConfigurationKnown && device.networkInterfaceToken.isNotEmpty;
+    final canFactoryReset = device.discoverySources.any((source) => source.startsWith('ONVIF')) && device.deviceServiceUrl.isNotEmpty;
     return ListView(padding: const EdgeInsets.all(18), children: [
       _heading('Maintenance', 'Actions for the selected camera'),
       const SizedBox(height: 14),
@@ -936,7 +937,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
       _heading('Camera maintenance', 'Only verified ONVIF operations are exposed'),
       const SizedBox(height: 8),
       OutlinedButton.icon(
-        onPressed: () => unawaited(_factoryReset(device)),
+        onPressed: canFactoryReset ? () => unawaited(_factoryReset(device)) : null,
         icon: const Icon(Icons.restore, color: Color(0xFFC62836)),
         label: const Text('Factory reset camera'),
       ),
