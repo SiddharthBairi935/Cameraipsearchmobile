@@ -1,6 +1,6 @@
 # Desktop main → mobile parity
 
-**Desktop source of truth:** `Karishma6543/camera-ip-search` main. Latest inspected commit: `c1f6c6db74f4dd6a80e6e03667bcc72a2a60a749` (merged PR #15, 25 November 2026). PR #15 follows PR #14's SSDP discovery, device classification and expanded scan scope.
+**Desktop source of truth:** `Karishma6543/camera-ip-search` main. Latest merged commit: `c1f6c6db74f4dd6a80e6e03667bcc72a2a60a749` (PR #15, 25 November 2026). PR #15 follows PR #14's SSDP discovery, device classification and expanded scan scope. Desktop PR #17 (`ff9aacb5bcbc41db36625fc7b68947ba4a5c6480`) is still a draft and has not been merged; this mobile branch separately adapts its workspace/UI direction without treating the desktop PR as a merged functional source.
 
 ## Functional parity
 
@@ -45,3 +45,18 @@
 - Signed Android/iOS distribution builds, privacy review, dependency/license review and store-release acceptance.
 
 A passing Flutter CI run or a generated APK is not production certification.
+
+
+## Desktop PR #17 workspace UX adaptation (provisional)
+
+| Desktop UX direction | Mobile adaptation | State |
+|---|---|---|
+| Inventory is the primary full-height workspace | Device inventory is the default landing screen | Implemented in this branch |
+| Discovery toolbar above the inventory | Interface selector, Discover, Subnet scan and Reachability controls directly above the list | Implemented in this branch |
+| Remove redundant metric-card row | No dashboard metric-card strip; network status and interface context remain available in Overview | Implemented in this branch |
+| Compact inventory rows | Denser device rows with device classification and confidence/status pills | Implemented in this branch |
+| Details / Configure / History in one inspector | Native bottom-sheet inspector with Details, Configure and History tabs | Implemented in this branch |
+| Configure divided into Device / Network / Storage | Grouped device maintenance, guarded IPv4 workflows and local inventory backup/restore | Implemented in this branch |
+| Dark Oxita graphite palette with restrained red | Dark mobile theme, high-contrast surfaces and red primary/focus accent | Implemented in this branch |
+
+This is a mobile-native interpretation, not a pixel-for-pixel Qt port. Desktop PR #17 remains draft; its cross-platform CI and visual review are independent desktop release gates. Functional parity continues to follow merged desktop main. No unsupported vendor operations, flashing or unverified network actions are introduced by this UI adaptation.
