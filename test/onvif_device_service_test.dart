@@ -83,3 +83,49 @@ void main() {
     }
   });
 }
+
+
+  test('factory reset sends the selected ONVIF Soft mode and reports acceptance', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    var requestBody = '';
+    final subscription = server.listen((request) async {
+      requestBody = await utf8.decoder.bind(request).join();
+      request.response.headers.contentType = ContentType('application', 'soap+xml', charset: 'utf-8');
+      request.response.write('''
+        <s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope"
+          xmlns:tds="http://www.onvif.org/ver10/device/wsdl">
+          <s:Body><tds:SetSystemFactoryDefaultResponse/></s:Body>
+        </s:Envelope>
+      ''');
+      await request.response.close();
+    });
+    try {
+      final device = CameraDevice(
+        id: '127.0.0.1',
+        ipAddress: '127.0.0.1',
+        deviceServiceUrl: 'http://127.0.0.1:${server.port}/onvif/device_service',
+        discoverySources: const ['ONVIF WS-Discovery'],
+      );
+      final message = await OnvifDeviceService().factoryReset(device, factoryDefaultType: 'Soft');
+      expect(requestBody, contains('SetSystemFactoryDefault'));
+      expect(requestBody, contains('<tds:FactoryDefault>Soft</tds:FactoryDefault>'));
+      expect(message, contains('accepted'));
+      expect(message, contains('change its IP address'));
+    } finally {
+      await subscription.cancel();
+      await server.close(force: true);
+    }
+  });
+
+  test('factory reset rejects unsupported modes without sending a request', () async {
+    final device = CameraDevice(
+      id: '127.0.0.1',
+      ipAddress: '127.0.0.1',
+      deviceServiceUrl: 'http://127.0.0.1/onvif/device_service',
+      discoverySources: const ['ONVIF WS-Discovery'],
+    );
+    await expectLater(
+      OnvifDeviceService().factoryReset(device, factoryDefaultType: 'EraseEverything'),
+      throwsA(isA<OnvifException>()),
+    );
+  });
