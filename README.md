@@ -26,7 +26,7 @@ The desktop app is C++20 / Qt 6 with local SQLite storage. The mobile app is a s
 
 ### Known mobile parity gaps
 
-- Desktop supports sequential bulk static-IPv4 assignment with per-camera validation and result/history reporting. Mobile currently exposes guarded single-camera static-IPv4 configuration only; bulk assignment is not implemented.
+- The mobile bulk static-IPv4 planning and per-camera result/history workflow is implemented, but execution remains intentionally fail-closed. Current platform probes cannot establish a verified clear address, so bulk writes are blocked pending a validated ARP/DAD backend and physical-device testing.
 - Desktop uses a resizable side-by-side inventory/inspector. Mobile intentionally uses a touch-friendly bottom-sheet inspector instead.
 - Desktop's native desktop workflows and OS integrations are not copied verbatim into Flutter.
 
