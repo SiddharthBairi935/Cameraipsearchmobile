@@ -1,5 +1,9 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
+
+import 'package:crypto/crypto.dart';
 
 import 'package:xml/xml.dart';
 
@@ -9,8 +13,15 @@ import 'network_config_validator.dart';
 class OnvifDeviceService {
   OnvifDeviceService({this.requestCredentials});
 
-  final Future<OnvifCredentials?> Function(String host, String realm)? requestCredentials;
+  final Future<OnvifCredentials?> Function(String host, String realm, String scheme)? requestCredentials;
   final Map<String, OnvifCredentials> _sessionCredentials = {};
+  final Map<String, int> _digestNonceCounts = {};
+  final Set<HttpClient> _activeClients = {};
+
+  void cancelActive() {
+    for (final client in _activeClients.toList()) { client.close(force: true); }
+    _activeClients.clear();
+  }
 
   static const _deviceNamespace = 'http://www.onvif.org/ver10/device/wsdl';
   static const _soapNamespace = 'http://www.w3.org/2003/05/soap-envelope';
@@ -72,7 +83,11 @@ class OnvifDeviceService {
 
     try {
       final dns = await _post(updated, 'GetDNS');
-      final dnsAddress = _firstText(dns, const {'IPv4Address', 'IPv4'});
+      final manualDns = _firstElement(dns, 'DNSManual');
+      final dhcpDns = _firstElement(dns, 'DNSFromDHCP');
+      final manualDnsAddress = manualDns == null ? '' : _text(manualDns, 'IPv4Address');
+      final dhcpDnsAddress = dhcpDns == null ? '' : _text(dhcpDns, 'IPv4Address');
+      final dnsAddress = manualDnsAddress.isNotEmpty ? manualDnsAddress : dhcpDnsAddress;
       if (dnsAddress.isNotEmpty) {
         updated = updated.copyWith(
           ipv4DnsServer: dnsAddress,
@@ -92,7 +107,7 @@ class OnvifDeviceService {
 
     final interfaces = responseElement.descendants
         .whereType<XmlElement>()
-        .where((e) => e.name.local == 'NetworkInterface')
+        .where((e) => e.name.local == 'NetworkInterface' || e.name.local == 'NetworkInterfaces')
         .toList();
     final summaries = <String>[];
     XmlElement? selected;
@@ -110,12 +125,21 @@ class OnvifDeviceService {
       final manual = config == null ? null : _firstElement(config, 'Manual');
       final fromDhcp = config == null ? null : _firstElement(config, 'FromDHCP');
       final linkLocal = config == null ? null : _firstElement(config, 'LinkLocal');
-      final gateway = config == null ? '' : _text(config, 'IPv4Address');
+      final manualAddress = manual == null ? '' : _text(manual, 'Address');
+      final dhcpAddress = fromDhcp == null ? '' : _text(fromDhcp, 'Address');
+      final linkLocalAddress = linkLocal == null ? '' : _text(linkLocal, 'Address');
+      final manualPrefix = manual == null ? '' : _text(manual, 'PrefixLength');
+      final dhcpPrefix = fromDhcp == null ? '' : _text(fromDhcp, 'PrefixLength');
+      final linkLocalPrefix = linkLocal == null ? '' : _text(linkLocal, 'PrefixLength');
+      final gatewayElement = config == null ? null : _firstElement(config, 'Gateway');
+      final chosenGateway = gatewayElement == null ? '' : _text(gatewayElement, 'IPv4Address');
       final active = dhcp.toLowerCase() == 'true' || dhcp == '1';
-      final source = active ? (fromDhcp ?? linkLocal ?? manual) : (manual ?? linkLocal ?? fromDhcp);
-      final address = source == null ? '' : _text(source, 'Address');
-      final prefix = source == null ? '' : _text(source, 'PrefixLength');
-      final chosenGateway = gateway.isNotEmpty ? gateway : _text(config ?? item, 'IPv4Address');
+      final address = active
+          ? (dhcpAddress.isNotEmpty ? dhcpAddress : (linkLocalAddress.isNotEmpty ? linkLocalAddress : manualAddress))
+          : (manualAddress.isNotEmpty ? manualAddress : (linkLocalAddress.isNotEmpty ? linkLocalAddress : dhcpAddress));
+      final prefix = active
+          ? (dhcpPrefix.isNotEmpty ? dhcpPrefix : (linkLocalPrefix.isNotEmpty ? linkLocalPrefix : manualPrefix))
+          : (manualPrefix.isNotEmpty ? manualPrefix : (linkLocalPrefix.isNotEmpty ? linkLocalPrefix : dhcpPrefix));
       final summary = [name, address, mac].where((s) => s.isNotEmpty).join(' | ');
       if (summary.isNotEmpty) summaries.add(summary);
       if (selected == null && token.isNotEmpty && address == device.ipAddress) {
@@ -157,6 +181,24 @@ class OnvifDeviceService {
       ipv4ConfigurationKnown: known,
       discoverySources: _append(device.discoverySources, 'ONVIF GetNetworkInterfaces'),
     );
+  }
+
+  Future<String> factoryReset(CameraDevice device, {required String factoryDefaultType}) async {
+    final mode = factoryDefaultType.trim();
+    if (mode != 'Soft' && mode != 'Hard') {
+      throw const OnvifException('Choose a supported ONVIF factory-default mode.');
+    }
+    if (!isSafeEndpoint(device) ||
+        !(device.discoverySources.any((source) => source.startsWith('ONVIF')) ||
+          device.onvifEndpoint.isNotEmpty)) {
+      throw const OnvifException('Factory reset requires a verified ONVIF device-service endpoint.');
+    }
+    await _post(
+      device,
+      'SetSystemFactoryDefault',
+      body: '<tds:FactoryDefault>${_xml(mode)}</tds:FactoryDefault>',
+    );
+    return 'The camera accepted the ONVIF $mode factory-default request. It may reboot, erase settings and change its IP address. Rediscover the camera before further configuration.';
   }
 
   Future<OnvifWriteResult> applyStaticIpv4(
@@ -230,32 +272,37 @@ class OnvifDeviceService {
     final uri = Uri.tryParse(device.deviceServiceUrl);
     if (uri == null || !isSafeEndpoint(device)) throw const OnvifException('Unsafe or invalid ONVIF service URL.');
     final client = HttpClient()..connectionTimeout = const Duration(seconds: 4);
-    final cached = _sessionCredentials[uri.host];
-    if (cached != null) {
-      client.addCredentials(uri, cached.realm, HttpClientBasicCredentials(cached.username, cached.password));
-    }
-    client.authenticate = (url, scheme, realm) async {
-      final credentials = _sessionCredentials[url.host] ??
-          await requestCredentials?.call(url.host, realm ?? '');
-      if (credentials == null) return false;
-      _sessionCredentials[url.host] = credentials;
-      client.addCredentials(url, credentials.realm, HttpClientBasicCredentials(credentials.username, credentials.password));
-      return true;
-    };
+    _activeClients.add(client);
     try {
-      final request = await client.postUrl(uri).timeout(const Duration(seconds: 5));
-      request.followRedirects = false;
-      request.headers.contentType = ContentType('application', 'soap+xml', charset: 'utf-8');
-      request.write(_envelope(operation, body));
-      final response = await request.close().timeout(const Duration(seconds: 5));
+      var response = await _sendSoap(client, uri, operation, body);
+      if (response.statusCode == HttpStatus.unauthorized) {
+        final challenges = response.headers[HttpHeaders.wwwAuthenticateHeader] ?? const <String>[];
+        await response.drain<void>();
+        final challenge = _selectChallenge(challenges);
+        if (challenge == null) throw const OnvifException('Camera requested an unsupported HTTP authentication scheme.');
+        final scheme = challenge.substring(0, challenge.indexOf(' ')).toLowerCase();
+        final parameters = _parseAuthParameters(challenge);
+        final realm = parameters['realm'] ?? '';
+        final credentials = _sessionCredentials[uri.host] ??
+            await requestCredentials?.call(uri.host, realm, scheme);
+        if (credentials == null) {
+          throw const OnvifException('Camera authentication was cancelled. No credentials were stored.');
+        }
+        _sessionCredentials[uri.host] = credentials;
+        final authorization = _authorizationHeader(
+          uri: uri, method: 'POST', scheme: scheme, challenge: parameters, credentials: credentials,
+        );
+        response = await _sendSoap(client, uri, operation, body, authorization: authorization);
+      }
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        await response.drain<void>();
+        throw OnvifException('ONVIF $operation failed with HTTP ${response.statusCode}. Authentication may be required or the operation may be unsupported.');
+      }
       final bytes = await response.fold<List<int>>(<int>[], (all, chunk) {
         if (all.length + chunk.length > 1024 * 1024) throw const OnvifException('ONVIF response exceeds 1 MB.');
         return all..addAll(chunk);
-      }).timeout(const Duration(seconds: 5));
-      if (response.statusCode < 200 || response.statusCode >= 300) {
-        throw OnvifException('ONVIF $operation failed with HTTP ${response.statusCode}. Authentication may be required or the operation may be unsupported.');
-      }
-      final document = XmlDocument.parse(String.fromCharCodes(bytes));
+      }).timeout(const Duration(seconds: 10));
+      final document = XmlDocument.parse(utf8.decode(bytes));
       if (_firstElement(document, 'Fault') != null) throw OnvifException('Camera returned a SOAP fault for $operation.');
       if (_firstElement(document, '${operation}Response') == null) {
         throw OnvifException('Camera returned an unexpected response for $operation.');
@@ -265,17 +312,124 @@ class OnvifDeviceService {
       throw OnvifException('ONVIF $operation timed out.');
     } on SocketException catch (error) {
       throw OnvifException('ONVIF $operation network error: ${error.message}');
+    } on HttpException catch (error) {
+      throw OnvifException('ONVIF $operation HTTP transport error: ${error.message}');
     } on FormatException {
       throw OnvifException('Camera returned malformed XML for $operation.');
+    } on OnvifException {
+      rethrow;
+    } on Exception catch (error) {
+      throw OnvifException('Could not parse ONVIF $operation response: $error');
     } finally {
+      _activeClients.remove(client);
       client.close(force: true);
     }
   }
 
+  Future<HttpClientResponse> _sendSoap(
+    HttpClient client, Uri uri, String operation, String body, {String? authorization}
+  ) async {
+    final request = await client.postUrl(uri).timeout(const Duration(seconds: 5));
+    request.followRedirects = false;
+    request.headers.contentType = ContentType('application', 'soap+xml', charset: 'utf-8');
+    if (authorization != null) request.headers.set(HttpHeaders.authorizationHeader, authorization);
+    request.write(_envelope(operation, body));
+    return request.close().timeout(const Duration(seconds: 45));
+  }
+
+  static String? _selectChallenge(List<String> challenges) {
+    for (final challenge in challenges) {
+      if (challenge.trimLeft().toLowerCase().startsWith('digest ')) return challenge.trim();
+    }
+    for (final challenge in challenges) {
+      if (challenge.trimLeft().toLowerCase().startsWith('basic ')) return challenge.trim();
+    }
+    return null;
+  }
+
+  static Map<String, String> _parseAuthParameters(String challenge) {
+    final parameters = <String, String>{};
+    final separator = challenge.indexOf(' ');
+    if (separator < 0) return parameters;
+    final pattern = RegExp(r'(\w+)\s*=\s*("[^"]*"|[^,]+)');
+    for (final match in pattern.allMatches(challenge.substring(separator + 1))) {
+      var value = (match.group(2) ?? '').trim();
+      if (value.startsWith('"') && value.endsWith('"') && value.length >= 2) {
+        value = value.substring(1, value.length - 1);
+      }
+      parameters[(match.group(1) ?? '').toLowerCase()] = value;
+    }
+    return parameters;
+  }
+
+  String _authorizationHeader({
+    required Uri uri, required String method, required String scheme,
+    required Map<String, String> challenge, required OnvifCredentials credentials,
+  }) {
+    if (scheme == 'basic') {
+      final token = base64Encode(utf8.encode('${credentials.username}:${credentials.password}'));
+      return 'Basic $token';
+    }
+    if (scheme != 'digest') throw const OnvifException('Only HTTP Basic and Digest authentication are supported.');
+    final realm = challenge['realm'] ?? '';
+    final nonce = challenge['nonce'] ?? '';
+    if (nonce.isEmpty) throw const OnvifException('Digest challenge did not contain a nonce.');
+    final algorithm = (challenge['algorithm'] ?? 'MD5').toUpperCase();
+    if (algorithm != 'MD5' && algorithm != 'MD5-SESS') {
+      throw OnvifException('Unsupported Digest algorithm: $algorithm.');
+    }
+    final qops = (challenge['qop'] ?? '').split(',').map((v) => v.trim().toLowerCase()).where((v) => v.isNotEmpty).toList();
+    if (qops.isNotEmpty && !qops.contains('auth')) {
+      throw const OnvifException('Camera Digest challenge requires unsupported qop; only qop=auth is supported.');
+    }
+    final path = uri.path.isEmpty ? '/' : uri.path;
+    final cnonce = List<int>.generate(16, (_) => math.Random.secure().nextInt(256))
+        .map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+    var ha1 = _md5('${credentials.username}:$realm:${credentials.password}');
+    if (algorithm == 'MD5-SESS') ha1 = _md5('$ha1:$nonce:$cnonce');
+    final ha2 = _md5('$method:$path');
+    final qop = qops.contains('auth') ? 'auth' : '';
+    var nc = '';
+    late final String digestResponse;
+    if (qop.isNotEmpty) {
+      final countKey = '${uri.host}:$nonce';
+      final count = (_digestNonceCounts[countKey] ?? 0) + 1;
+      _digestNonceCounts[countKey] = count;
+      nc = count.toRadixString(16).padLeft(8, '0');
+      digestResponse = _md5('$ha1:$nonce:$nc:$cnonce:$qop:$ha2');
+    } else {
+      digestResponse = _md5('$ha1:$nonce:$ha2');
+    }
+    String quote(String value) {
+      final slash = String.fromCharCode(92);
+      final escaped = value.replaceAll(slash, '$slash$slash').replaceAll('"', '$slash"');
+      return '"$escaped"';
+    }
+    final fields = <String>[
+      'username=${quote(credentials.username)}',
+      'realm=${quote(realm)}',
+      'nonce=${quote(nonce)}',
+      'uri=${quote(path)}',
+      'response=${quote(digestResponse)}',
+      'algorithm=$algorithm',
+    ];
+    if (qop.isNotEmpty) {
+      fields.add('qop=$qop');
+      fields.add('nc=$nc');
+      fields.add('cnonce=${quote(cnonce)}');
+    } else if (algorithm == 'MD5-SESS') {
+      fields.add('cnonce=${quote(cnonce)}');
+    }
+    if ((challenge['opaque'] ?? '').isNotEmpty) fields.add('opaque=${quote(challenge['opaque']!)}');
+    return 'Digest ${fields.join(', ')}';
+  }
+
+  static String _md5(String value) => md5.convert(utf8.encode(value)).toString();
+
   static String _envelope(String operation, String body) =>
       '<?xml version="1.0" encoding="UTF-8"?>'
       '<s:Envelope xmlns:s="$_soapNamespace" xmlns:tds="$_deviceNamespace" '
-      'xmlns:tt="http://www.onvif.org/ver10/schema"><s:Body><tds:$operation>$body</tds:$s:Body></s:Envelope>';
+      'xmlns:tt="http://www.onvif.org/ver10/schema"><s:Body><tds:$operation>$body</tds:$operation></s:Body></s:Envelope>';
 
   static XmlElement? _firstElement(XmlNode root, String localName) {
     for (final element in root.descendants.whereType<XmlElement>()) {
@@ -286,15 +440,6 @@ class OnvifDeviceService {
 
   static String _text(XmlNode root, String localName) =>
       _firstElement(root, localName)?.innerText.trim() ?? '';
-
-  static String _firstText(XmlNode root, Set<String> names) {
-    for (final element in root.descendants.whereType<XmlElement>()) {
-      if (names.contains(element.name.local) && element.innerText.trim().isNotEmpty) {
-        return element.innerText.trim();
-      }
-    }
-    return '';
-  }
 
   static List<String> _append(List<String> values, String value) =>
       values.contains(value) ? values : [...values, value];
@@ -312,7 +457,7 @@ class OnvifDeviceService {
   static int _maskToPrefix(String mask) {
     final bytes = InternetAddress.tryParse(mask)!.rawAddress;
     var value = 0;
-    for (final byte in bytes) value = (value << 8) | byte;
+    for (final byte in bytes) { value = (value << 8) | byte; }
     var count = 0;
     var zeroSeen = false;
     for (var bit = 31; bit >= 0; bit--) {
@@ -324,18 +469,20 @@ class OnvifDeviceService {
   }
 
   static bool _verifyInterfaceAddress(XmlDocument doc, String token, String address) {
-    for (final item in doc.descendants.whereType<XmlElement>().where((e) => e.name.local == 'NetworkInterface')) {
+    for (final item in doc.descendants.whereType<XmlElement>().where((e) => e.name.local == 'NetworkInterface' || e.name.local == 'NetworkInterfaces')) {
       if ((item.getAttribute('token') ?? '') != token) continue;
-      final actual = _firstText(item, {'Address', 'IPv4Address'});
-      return actual == address;
+      final addresses = item.descendants.whereType<XmlElement>()
+          .where((e) => e.name.local == 'Address' || e.name.local == 'IPv4Address')
+          .map((e) => e.innerText.trim());
+      return addresses.contains(address);
     }
     return false;
   }
 }
 
 class OnvifCredentials {
-  const OnvifCredentials(this.username, this.password, {this.realm = ''});
-  final String username, password, realm;
+  const OnvifCredentials(this.username, this.password, {this.realm = '', this.scheme = 'basic'});
+  final String username, password, realm, scheme;
 }
 
 class OnvifWriteResult {

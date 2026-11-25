@@ -10,11 +10,15 @@ import '../models/camera_device.dart';
 import 'onvif_device_service.dart';
 
 class DeviceDiscoveryService extends ChangeNotifier {
-  DeviceDiscoveryService({OnvifDeviceService? onvifService})
+  DeviceDiscoveryService({OnvifDeviceService? onvifService, this.onOperation})
       : _onvif = onvifService ?? OnvifDeviceService();
+
+  final void Function(String operation, String target, String outcome, String details)? onOperation;
 
   final OnvifDeviceService _onvif;
   bool _cancelSubnet = false;
+  bool _isSubnetScanning = false;
+  bool get isSubnetScanning => _isSubnetScanning;
   bool _cancelReachability = false;
   int _discoveryGeneration = 0;
   String _selectedInterfaceName = '';
@@ -28,6 +32,7 @@ class DeviceDiscoveryService extends ChangeNotifier {
   Timer? _timeout;
   int _sequence = DateTime.now().millisecondsSinceEpoch & 0x7fffffff;
   bool _isScanning = false;
+  bool _disposed = false;
   String _status = 'Ready to discover cameras on your local network.';
 
   List<CameraDevice> get devices => _devices.values.toList()
@@ -36,6 +41,7 @@ class DeviceDiscoveryService extends ChangeNotifier {
   String get status => _status;
 
   void updateDevice(CameraDevice device) {
+    if (_disposed) return;
     final matched = _matchingKey(device);
     final key = matched ?? (device.macAddress.isNotEmpty ? device.macAddress : device.id);
     if (key.isEmpty) return;
@@ -45,11 +51,23 @@ class DeviceDiscoveryService extends ChangeNotifier {
   }
 
   void restoreDevice(CameraDevice device) {
+    if (_disposed) return;
     final key = device.macAddress.isNotEmpty ? device.macAddress : device.ipAddress;
     if (key.isNotEmpty) _devices[key] = device;
   }
 
+  void replaceInventory(List<CameraDevice> devices) {
+    if (_disposed) return;
+    _devices.clear();
+    for (final device in devices) {
+      final key = device.macAddress.isNotEmpty ? device.macAddress : device.ipAddress;
+      if (key.isNotEmpty) _devices[key] = device;
+    }
+    notifyListeners();
+  }
+
   void updateReachability(CameraDevice device, String result) {
+    if (_disposed) return;
     final key = device.macAddress.isNotEmpty ? device.macAddress : device.ipAddress;
     final existing = _devices[key];
     if (existing != null) {
@@ -60,15 +78,17 @@ class DeviceDiscoveryService extends ChangeNotifier {
 
   void _setStatus(String value) {
     _status = value;
-    notifyListeners();
+    if (!_disposed) notifyListeners();
   }
 
   Future<void> startDiscovery({String interfaceName = ''}) async {
-    if (_isScanning) return;
+    if (_disposed || _isScanning) return;
     if (!await _ensureLocalNetworkAccess()) {
-      _setStatus('Local network permission is required to discover cameras.');
+      if (!_disposed) _setStatus('Local network permission is required to discover cameras.');
+      onOperation?.call('Discovery', interfaceName, 'Failed', 'Local network permission was not granted.');
       return;
     }
+    if (_disposed) return;
     await cancelDiscovery(notify: false);
     _selectedInterfaceName = interfaceName;
     final generation = ++_discoveryGeneration;
@@ -78,67 +98,89 @@ class DeviceDiscoveryService extends ChangeNotifier {
     try {
       final interfaces = await NetworkInterface.list(
         type: InternetAddressType.IPv4,
+        includeLinkLocal: true,
         includeLoopback: false,
-        includeLinkLocal: false,
       );
-      var interfaceCount = 0;
+      if (generation != _discoveryGeneration) { return; }
+      await _acquireMulticastLock();
+      if (generation != _discoveryGeneration) { _closeSockets(); return; }
       for (final interface in interfaces) {
-        if (interfaceName.isNotEmpty && interface.name != interfaceName) continue;
+        if (generation != _discoveryGeneration) { return; }
+        if (interfaceName.isNotEmpty && interface.name != interfaceName) { continue; }
         for (final address in interface.addresses) {
+          if (generation != _discoveryGeneration) { return; }
           if (address.type != InternetAddressType.IPv4 ||
-              address.isLoopback ||
-              address.isLinkLocal) continue;
-          await _openInterface(interface, address);
-          interfaceCount++;
+              address.isLoopback) { continue; }
+          await _openInterface(interface, address, generation);
+          if (generation != _discoveryGeneration) { _closeSockets(); return; }
         }
       }
       if (_sockets.isEmpty) {
+        _closeSockets();
         _isScanning = false;
         _setStatus('No usable IPv4 socket could be opened on the active interfaces.');
+        onOperation?.call('Discovery', interfaceName, 'Failed', 'No usable IPv4 socket could be opened.');
         return;
       }
-      await _acquireMulticastLock();
+      final interfaceCount = _sockets.length;
       _setStatus('Sending ONVIF and project-camera probes on $interfaceCount interface address(es)…');
       _timeout = Timer(const Duration(seconds: 6), () { if (generation == _discoveryGeneration) _finishDiscovery(); });
     } on SocketException catch (error) {
+      _closeSockets();
       _isScanning = false;
-      _setStatus('Local network discovery failed: ${error.message}');
+      _setStatus('Local network discovery failed: ${error.toString()}');
+      onOperation?.call('Discovery', interfaceName, 'Failed', error.toString());
     } catch (error) {
+      _closeSockets();
       _isScanning = false;
       _setStatus('Could not start discovery: $error');
+      onOperation?.call('Discovery', interfaceName, 'Failed', error.toString());
     }
   }
 
-  Future<void> _openInterface(NetworkInterface interface, InternetAddress localAddress) async {
+  Future<void> _openInterface(NetworkInterface interface, InternetAddress localAddress, int generation) async {
     RawDatagramSocket? socket;
     try {
-      socket = await RawDatagramSocket.bind(localAddress, 0, reuseAddress: true);
-      socket.broadcastEnabled = true;
-      socket.multicastHops = 1;
+      final openedSocket = await RawDatagramSocket.bind(localAddress, 0, reuseAddress: true);
+      socket = openedSocket;
+      if (generation != _discoveryGeneration) { openedSocket.close(); return; }
+      openedSocket.broadcastEnabled = true;
+      openedSocket.multicastHops = 1;
       try {
-        socket.joinMulticast(onvifGroup, interface);
-      } on SocketException catch (error) {
+        openedSocket.joinMulticast(onvifGroup, interface);
+      } catch (error) {
         // Some mobile builds (notably iOS without Apple's multicast entitlement)
         // cannot join multicast. Keep the socket alive for any permitted unicast
         // or project probe path and report the platform limitation.
-        _setStatus('ONVIF multicast unavailable on ${interface.name}: ${error.message}');
+        _setStatus('ONVIF multicast unavailable on ${interface.name}: $error');
       }
       final sequence = ++_sequence;
-      _sockets.add(socket);
-      socket.listen((event) {
+      _sockets.add(openedSocket);
+      openedSocket.listen((event) {
         if (event != RawSocketEvent.read) return;
         Datagram? datagram;
-        while ((datagram = socket!.receive()) != null) {
+        while ((datagram = openedSocket.receive()) != null) {
           _handleDatagram(datagram!, sequence, interface.name);
         }
       }, onError: (Object error) {
         _setStatus('Socket error on ${interface.name}: $error');
       });
-      _sendOnvifProbe(socket);
-      _sendProjectProbe(socket, sequence);
+      try {
+        _sendOnvifProbe(openedSocket);
+      } catch (error) {
+        _setStatus('ONVIF multicast send unavailable on ${interface.name}: $error');
+      }
+      try {
+        _sendProjectProbe(openedSocket, sequence);
+      } catch (error) {
+        _setStatus('Oxita UDP probe unavailable on ${interface.name}: $error');
+      }
     } on SocketException catch (error) {
-      socket?.close();
+      if (socket != null) { _sockets.remove(socket); socket.close(); }
       _setStatus('Could not bind ${interface.name}: ${error.message}');
+    } catch (error) {
+      if (socket != null) { _sockets.remove(socket); socket.close(); }
+      _setStatus('Could not initialize ${interface.name}: $error');
     }
   }
 
@@ -171,47 +213,44 @@ class DeviceDiscoveryService extends ChangeNotifier {
     if (datagram.data.length > 65507) return;
     final payload = utf8.decode(datagram.data, allowMalformed: true);
     if (payload.contains('CAM_DISCOVER')) {
-      final device = _parseProjectResponse(payload, expectedSequence, datagram.address, interfaceName);
+      final device = parseProjectResponse(payload, expectedSequence, datagram.address, interfaceName);
       if (device != null) _merge(device);
     } else if (payload.contains('ProbeMatch')) {
-      final device = _parseOnvifResponse(payload, datagram.address, interfaceName);
+      final device = parseOnvifResponse(payload, datagram.address, interfaceName);
       if (device != null) _merge(device);
     }
   }
 
-  CameraDevice? _parseProjectResponse(String payload, int expectedSequence,
+  CameraDevice? parseProjectResponse(String payload, int expectedSequence,
       InternetAddress sender, String interfaceName) {
     try {
+      if (utf8.encode(payload).length > 65507 || sender.type != InternetAddressType.IPv4) { return null; }
       final root = jsonDecode(payload);
       if (root is! Map<String, dynamic> ||
           root['magic'] != 'CAM_DISCOVER' ||
           root['version'] != 1 ||
           root['seq'] != expectedSequence ||
           root['cmd'] != 'PROBE_RESPONSE' ||
-          root['device'] is! Map<String, dynamic>) return null;
+          root['device'] is! Map<String, dynamic>) { return null; }
       final device = root['device'] as Map<String, dynamic>;
       for (final key in ['mac', 'ipv4', 'netmask', 'gateway', 'dns', 'soc', 'firmware_version']) {
-        if (device[key] != null && device[key] is! String) return null;
+        if (device[key] != null && device[key] is! String) { return null; }
       }
       for (final key in ['http_port', 'rtsp_port']) {
         final value = device[key];
-        if (value != null && (value is! num || value < 1 || value > 65535 || value % 1 != 0)) return null;
+        if (value != null && (value is! num || value < 1 || value > 65535 || value % 1 != 0)) { return null; }
       }
       if (device['activated'] != null && device['activated'] is! bool) return null;
       if (device['dhcp'] != null && device['dhcp'] is! bool) return null;
       final rawMac = (device['mac'] as String? ?? '').trim().toUpperCase().replaceAll('-', ':');
       final mac = RegExp(r'^[0-9A-F]{2}(:[0-9A-F]{2}){5}$').hasMatch(rawMac) ? rawMac : '';
       final advertisedIp = InternetAddress.tryParse(device['ipv4'] as String? ?? '');
-      if (advertisedIp != null &&
-          (advertisedIp.type != InternetAddressType.IPv4 ||
-           advertisedIp.isLoopback || advertisedIp.isMulticast ||
-           advertisedIp.address == '0.0.0.0' || advertisedIp.address == '255.255.255.255')) {
-        if (sender.address != '0.0.0.0') return null;
-      }
+      final usableAdvertised = advertisedIp != null && advertisedIp.type == InternetAddressType.IPv4 &&
+          !advertisedIp.isLoopback && !advertisedIp.isMulticast &&
+          advertisedIp.address != '0.0.0.0' && advertisedIp.address != '255.255.255.255';
       final senderIsUnconfigured = sender.address == '0.0.0.0';
-      if (!senderIsUnconfigured && advertisedIp != null &&
-          advertisedIp.address != sender.address) return null;
-      final ip = senderIsUnconfigured ? (advertisedIp?.address ?? '') : sender.address;
+      if (!senderIsUnconfigured && usableAdvertised && advertisedIp.address != sender.address) return null;
+      final ip = senderIsUnconfigured ? (usableAdvertised ? advertisedIp.address : '') : sender.address;
       if (ip.isEmpty || ip == '0.0.0.0' || ip == '255.255.255.255') return null;
       return CameraDevice(
         id: mac.isNotEmpty ? mac : ip,
@@ -231,9 +270,9 @@ class DeviceDiscoveryService extends ChangeNotifier {
     }
   }
 
-  CameraDevice? _parseOnvifResponse(String payload, InternetAddress sender, String interfaceName) {
+  CameraDevice? parseOnvifResponse(String payload, InternetAddress sender, String interfaceName) {
     try {
-      if (payload.length > 65507) return null;
+      if (utf8.encode(payload).length > 65507 || sender.type != InternetAddressType.IPv4) return null;
       final document = XmlDocument.parse(payload);
       final probeMatches = document.descendants.where((node) => node is XmlElement && node.name.local == 'ProbeMatch');
       for (final match in probeMatches) {
@@ -301,16 +340,16 @@ class DeviceDiscoveryService extends ChangeNotifier {
         final known = entry.value;
         final conflict = mac.isNotEmpty && known.macAddress.isNotEmpty &&
             mac != _normalizedMac(known.macAddress);
-        if (!conflict && known.onvifEndpoint.toLowerCase() == observation.onvifEndpoint.toLowerCase()) return entry.key;
+        if (!conflict && known.onvifEndpoint.toLowerCase() == observation.onvifEndpoint.toLowerCase()) { return entry.key; }
       }
     }
-    if (observation.serialNumber.isNotEmpty && observation.manufacturer.isNotEmpty) {
+    if (observation.serialNumber.isNotEmpty && _known(observation.manufacturer)) {
       for (final entry in _devices.entries) {
         final known = entry.value;
         final conflict = mac.isNotEmpty && known.macAddress.isNotEmpty &&
             mac != _normalizedMac(known.macAddress);
         if (!conflict && known.serialNumber.toLowerCase() == observation.serialNumber.toLowerCase() &&
-            known.manufacturer.toLowerCase() == observation.manufacturer.toLowerCase()) return entry.key;
+            known.manufacturer.toLowerCase() == observation.manufacturer.toLowerCase()) { return entry.key; }
       }
     }
     for (final entry in _devices.entries) {
@@ -318,7 +357,7 @@ class DeviceDiscoveryService extends ChangeNotifier {
       final conflict = mac.isNotEmpty && known.macAddress.isNotEmpty &&
           mac != _normalizedMac(known.macAddress);
       if (!conflict && observation.ipAddress.isNotEmpty &&
-          known.ipAddress == observation.ipAddress) return entry.key;
+          known.ipAddress == observation.ipAddress) { return entry.key; }
     }
     return null;
   }
@@ -369,9 +408,9 @@ class DeviceDiscoveryService extends ChangeNotifier {
         isCandidate: verified ? false : existing.isCandidate,
         openPorts: {...existing.openPorts, ...incoming.openPorts}.toList()..sort(),
         lastSeen: incoming.lastSeen ?? DateTime.now(),
-        reachabilityStatus: existing.reachabilityStatus == 'Not checked' ? incoming.reachabilityStatus : existing.reachabilityStatus,
-        reachabilityCheckedAt: existing.reachabilityCheckedAt.isEmpty ? incoming.reachabilityCheckedAt : existing.reachabilityCheckedAt,
-        lastSuccessfulResponseAt: existing.lastSuccessfulResponseAt.isEmpty ? incoming.lastSuccessfulResponseAt : existing.lastSuccessfulResponseAt,
+        reachabilityStatus: incoming.reachabilityCheckedAt.isNotEmpty ? incoming.reachabilityStatus : existing.reachabilityStatus,
+        reachabilityCheckedAt: incoming.reachabilityCheckedAt.isNotEmpty ? incoming.reachabilityCheckedAt : existing.reachabilityCheckedAt,
+        lastSuccessfulResponseAt: incoming.lastSuccessfulResponseAt.isNotEmpty ? incoming.lastSuccessfulResponseAt : existing.lastSuccessfulResponseAt,
       );
     }
     notifyListeners();
@@ -386,18 +425,30 @@ class DeviceDiscoveryService extends ChangeNotifier {
   final Set<String> _refreshing = {};
 
   Future<void> refreshDeviceInfo(CameraDevice device) async {
+    if (_disposed) return;
     final key = _matchingKey(device) ?? (device.macAddress.isNotEmpty ? device.macAddress : device.ipAddress);
     if (key.isEmpty || !_refreshing.add(key)) return;
     _setStatus('Refreshing ONVIF information for ${device.ipAddress}…');
     try {
+      final generation = _discoveryGeneration;
       final updated = await _onvif.refresh(device);
+      if (generation != _discoveryGeneration) return;
       _merge(updated);
       _setStatus('ONVIF information refreshed for ${device.ipAddress}.');
+      onOperation?.call('Device information refresh', device.ipAddress, 'Completed', 'ONVIF identity, capabilities and available network details refreshed.');
     } on OnvifException catch (error) {
       _setStatus('ONVIF refresh failed for ${device.ipAddress}: ${error.message}');
+      onOperation?.call('Device information refresh', device.ipAddress, 'Failed', error.message);
     } finally {
       _refreshing.remove(key);
     }
+  }
+
+  Future<String> factoryReset(CameraDevice device, {required String factoryDefaultType}) async {
+    final message = await _onvif.factoryReset(device, factoryDefaultType: factoryDefaultType);
+    _setStatus(message);
+    onOperation?.call('Factory reset', device.ipAddress, 'Accepted', message);
+    return message;
   }
 
   Future<OnvifWriteResult> applyStaticIpv4(CameraDevice device, {
@@ -410,24 +461,50 @@ class DeviceDiscoveryService extends ChangeNotifier {
   }
 
   Future<void> addManualDevice(String address) async {
-    final parsed = InternetAddress.tryParse(address.trim());
-    if (parsed == null || parsed.type != InternetAddressType.IPv4 || parsed.isLoopback || parsed.isMulticast || parsed.isLinkLocal || parsed.address == '0.0.0.0' || parsed.address == '255.255.255.255') {
-      throw const FormatException('Enter a valid unicast IPv4 address.');
+    final value = address.trim();
+    final parsed = InternetAddress.tryParse(value);
+    final validIp = parsed != null &&
+        !parsed.isLoopback &&
+        !parsed.isMulticast &&
+        parsed.address != '0.0.0.0' &&
+        parsed.address != '255.255.255.255' &&
+        parsed.address != '::';
+    final hostname = value.endsWith('.') ? value.substring(0, value.length - 1) : value;
+    final labels = hostname.split('.');
+    final validHostname = hostname.isNotEmpty &&
+        hostname.length <= 253 &&
+        labels.every((label) =>
+            label.isNotEmpty &&
+            label.length <= 63 &&
+            RegExp(r'^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$')
+                .hasMatch(label));
+    if (!validIp && !validHostname) {
+      throw const FormatException(
+        'Enter a valid IP address or hostname (for example, 192.168.1.100 or camera.local).',
+      );
     }
+    final normalized = parsed?.address ?? hostname.toLowerCase();
     _merge(CameraDevice(
-      id: parsed.address,
-      ipAddress: parsed.address,
+      id: normalized,
+      ipAddress: normalized,
       discoverySources: const ['Manual'],
       lastSeen: DateTime.now(),
     ));
   }
 
-  Future<void> scanSubnet(InternetAddress localAddress, InternetAddress mask, {void Function(int completed, int total, int candidates)? onProgress}) async {
+  Future<void> scanSubnet(InternetAddress localAddress, InternetAddress mask, {String interfaceName = '', void Function(int completed, int total, int candidates)? onProgress}) async {
+    if (_disposed || _isSubnetScanning) return;
     if (!await _ensureLocalNetworkAccess()) {
-      _setStatus('Local network permission is required to scan this subnet.');
+      if (!_disposed) _setStatus('Local network permission is required to scan this subnet.');
+      onOperation?.call('Subnet scan', interfaceName, 'Failed', 'Local network permission was not granted.');
       return;
     }
+    if (_disposed) return;
     _cancelSubnet = false;
+    if (interfaceName.isNotEmpty) _selectedInterfaceName = interfaceName;
+    if (localAddress.type != InternetAddressType.IPv4 || localAddress.isLoopback || localAddress.isMulticast) {
+      throw const FormatException('A usable local IPv4 address is required.');
+    }
     final ip = localAddress.rawAddress;
     final maskBytes = mask.rawAddress;
     if (ip.length != 4 || maskBytes.length != 4) throw const FormatException('IPv4 only.');
@@ -437,9 +514,15 @@ class DeviceDiscoveryService extends ChangeNotifier {
       broadcast = (broadcast << 8) | ((ip[i] & maskBytes[i]) | (~maskBytes[i] & 255));
       own = (own << 8) | ip[i];
     }
+    final maskValue = (maskBytes[0] << 24) | (maskBytes[1] << 16) | (maskBytes[2] << 8) | maskBytes[3];
+    final inverse = (~maskValue) & 0xffffffff;
+    if (maskValue == 0 || maskValue == 0xffffffff || (inverse & (inverse + 1)) != 0) {
+      throw const FormatException('Subnet mask must be a contiguous IPv4 mask from /1 through /30.');
+    }
     final first = network + 1;
     final last = broadcast - 1;
     if (last < first) throw const FormatException('Invalid subnet.');
+    _isSubnetScanning = true;
     final hostCount = last - first + 1;
     final end = hostCount <= 256 ? last : (own + 128 < last ? own + 128 : last);
     final start = hostCount <= 256 ? first : (own - 127 > first ? own - 127 : first);
@@ -454,9 +537,9 @@ class DeviceDiscoveryService extends ChangeNotifier {
     final tasks = <Future<void>>[];
     final semaphore = _AsyncSemaphore(24);
     for (final host in hosts) {
-      final address = InternetAddress.fromRawAddress([
+      final address = InternetAddress.fromRawAddress(Uint8List.fromList([
         (host >> 24) & 255, (host >> 16) & 255, (host >> 8) & 255, host & 255,
-      ]);
+      ]));
       tasks.add(() async {
         await semaphore.acquire();
         try {
@@ -495,13 +578,20 @@ class DeviceDiscoveryService extends ChangeNotifier {
       }());
     }
     await Future.wait(tasks);
-    _setStatus('Subnet scan complete. $candidates unverified candidate(s) found from $completed host(s).');
+    _isSubnetScanning = false;
+    final cancelled = _cancelSubnet;
+    _setStatus(cancelled ? 'Subnet scan cancelled after $completed host(s).' : 'Subnet scan complete. $candidates unverified candidate(s) found from $completed host(s).');
+    onOperation?.call('Subnet scan', _selectedInterfaceName, cancelled ? 'Cancelled' : 'Completed', '$completed host(s) checked; $candidates unverified candidate(s) found.');
   }
 
   void cancelSubnetScan() { _cancelSubnet = true; _setStatus('Cancelling subnet scan…'); }
 
   Future<String> checkReachability(CameraDevice device) async {
     if (!await _ensureLocalNetworkAccess()) return 'Permission required';
+    return _checkDevice(device);
+  }
+
+  Future<String> _checkDevice(CameraDevice device) async {
     const ports = [80, 443, 554, 8000, 8080, 8899, 34567];
     for (final port in {...device.openPorts, ...ports}) {
       try {
@@ -515,6 +605,42 @@ class DeviceDiscoveryService extends ChangeNotifier {
       }
     }
     return 'No response';
+  }
+
+  Future<int> checkReachabilityBatch(
+    List<CameraDevice> devices, {
+    void Function(int completed, int total, CameraDevice current)? onProgress,
+  }) async {
+    if (!await _ensureLocalNetworkAccess()) {
+      onOperation?.call('Reachability', '', 'Failed', 'Local network permission was not granted.');
+      return 0;
+    }
+    _cancelReachability = false;
+    var completed = 0;
+    for (final device in devices) {
+      if (_cancelReachability) break;
+      onProgress?.call(completed, devices.length, device);
+      final result = await _checkDevice(device);
+      final checkedAt = DateTime.now().toIso8601String();
+      _merge(device.copyWith(
+        reachabilityStatus: result,
+        reachabilityCheckedAt: checkedAt,
+        lastSuccessfulResponseAt: result == 'Reachable' ? checkedAt : device.lastSuccessfulResponseAt,
+      ));
+      completed++;
+      onProgress?.call(completed, devices.length, device);
+    }
+    final cancelled = _cancelReachability;
+    _setStatus(cancelled
+        ? 'Reachability check cancelled after $completed device(s).'
+        : 'Reachability check complete for $completed device(s).');
+    onOperation?.call('Reachability', '', cancelled ? 'Cancelled' : 'Completed', '$completed of ${devices.length} device(s) checked.');
+    return completed;
+  }
+
+  void cancelReachability() {
+    _cancelReachability = true;
+    _setStatus('Cancelling reachability checks…');
   }
 
   Future<void> _acquireMulticastLock() async {
@@ -548,14 +674,21 @@ class DeviceDiscoveryService extends ChangeNotifier {
     _isScanning = false;
     _closeSockets();
     _setStatus('Discovery finished. ${_devices.length} device(s) found.');
+    onOperation?.call('Discovery', _selectedInterfaceName, 'Completed', '${_devices.length} device(s) in local inventory.');
   }
 
   Future<void> cancelDiscovery({bool notify = true}) async {
+    if (_disposed) return;
+    _discoveryGeneration++;
+    _onvif.cancelActive();
     _timeout?.cancel();
     _timeout = null;
     _isScanning = false;
     _closeSockets();
-    if (notify) _setStatus('Discovery cancelled.');
+    if (notify) {
+      _setStatus('Discovery cancelled.');
+      onOperation?.call('Discovery', _selectedInterfaceName, 'Cancelled', '${_devices.length} device(s) retained.');
+    }
   }
 
   void _closeSockets() {
@@ -571,7 +704,15 @@ class DeviceDiscoveryService extends ChangeNotifier {
 
   @override
   void dispose() {
+    if (_disposed) return;
+    _disposed = true;
+    _cancelSubnet = true;
+    _cancelReachability = true;
+    _isScanning = false;
+    _isSubnetScanning = false;
+    _discoveryGeneration++;
     _timeout?.cancel();
+    _onvif.cancelActive();
     _closeSockets();
     super.dispose();
   }

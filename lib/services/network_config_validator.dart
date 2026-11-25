@@ -48,10 +48,11 @@ class NetworkConfigValidator {
         parsed.isLoopback ||
         parsed.isMulticast ||
         parsed.address == '0.0.0.0' ||
-        parsed.address == '255.255.255.255') return null;
+        parsed.address == '255.255.255.255') { return null; }
     return parsed.rawAddress;
   }
 
   static int _toInt(List<int> bytes) =>
       (bytes[0] << 24) | (bytes[1] << 16) | (bytes[2] << 8) | bytes[3];
 }
+

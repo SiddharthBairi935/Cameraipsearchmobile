@@ -1,29 +1,90 @@
-# Camera IP Search Mobile
+# Oxita Camera IP Search Mobile
 
-Flutter mobile companion to the Camera IP Search desktop application.
+Flutter/Dart Android and iOS companion to the desktop [Camera IP Search](https://github.com/Karishma6543/camera-ip-search).
 
-The mobile app is a separate Android/iOS client. It must preserve the desktop discovery and device-management contracts while using mobile-native interaction patterns.
+The mobile app translates the desktop release-candidate workflows into mobile navigation, responsive cards, bottom sheets and confirmation dialogs. It is not a Qt UI copy.
 
-## Reference implementation
+## Desktop source of truth
 
-- Desktop repository: https://github.com/Karishma6543/camera-ip-search
-- ONVIF WS-Discovery: UDP multicast `239.255.255.250:3702`
-- Project firmware discovery: UDP broadcast port `9988`, Contract B version 1
-- Candidate scanning: bounded, opt-in local IPv4 scan; open ports are candidates, not confirmed cameras
+The current parity target is the latest merged desktop `main`:
+https://github.com/Karishma6543/camera-ip-search
 
-## Mobile stack
+Desktop main inspected at commit `4b3092ff58cb2fc9ee1dd5a0b9e4d91d29d45915`, including merged PR #11 (inventory backup/restore, official Oxita logo, security-redaction improvements and UI acceptance coverage). Mobile changes are maintained in PR #4 until verified and merged.
 
-- Flutter / Dart
-- Dart UDP/TCP sockets for local-network discovery
-- XML parsing for ONVIF ProbeMatch
-- Persistent device inventory
+## Ported desktop capabilities
 
-## Platform constraints
+- ONVIF WS-Discovery and Oxita Contract B UDP discovery (port 9988).
+- Selectable active IPv4 interface for discovery.
+- ONVIF XAddr validation: HTTP(S), same responding host, no user info, query or fragment.
+- Project response validation: magic, version, command, sequence, field types and sender-IP binding; supports the explicit unconfigured-camera 0.0.0.0 sender case.
+- Device identity matching using MAC, ONVIF endpoint, serial + known manufacturer, and guarded IP fallback; conflicting MAC addresses are not merged.
+- Candidate scan observations cannot overwrite verified device identity or IP details.
+- ONVIF GetDeviceInformation, GetCapabilities, GetNetworkInterfaces and GetDNS enrichment.
+- Select the ONVIF interface whose active IPv4 address matches the discovered camera before enabling static-IP writes.
+- Bounded opt-in TCP subnet scan (maximum 256 IPv4 hosts, with a window around the selected host on larger networks), common camera ports, candidate provenance, progress and cancellation.
+- TCP reachability checks with per-device timestamps, multi-select priority and cancellation.
+- Manual IP address/hostname inventory entry, labels, search, manufacturer/status filters and device detail profile.
+- Guarded ONVIF static IPv4 write: local validation, explicit confirmation, SOAP response validation, new-IP verification and separate gateway result handling.
+- Official Oxita logo bundled for offline in-app branding.
+- Local SQLite inventory with pre-migration `PRAGMA quick_check`, schema migration, persistent Operation History (latest 1,000; latest 250 displayed), CSV export/share, app data path information and session-only ONVIF HTTP Basic/Digest challenge credentials.
+- Rotating diagnostic logs (2 MiB active file, three archives), best-effort redaction for usernames, key/value secrets, Basic/Bearer/Digest authorization, URL user-info and namespaced XML secret elements.
+- SQLite inventory backup and restore: checkpointed backup, integrity-checked restore, pre-restore recovery snapshot and rollback on restore failure. Backup files are specific to the mobile inventory schema and are not a desktop-database interchange format.
+- User-confirmed diagnostic support bundle with OS/app/runtime details, IPv4 interface summary, recent operation history and redacted logs; inventory database and ONVIF interface tokens are excluded. The user can inspect the text before sharing.
+- Deterministic mobile test fixtures matching the desktop simulator's Contract B and limited ONVIF response scenarios, including malformed JSON, wrong sequence, invalid port, advertised-IP mismatch, missing MAC, unsafe/multiple XAddrs.
+- Discovery, subnet scan and reachability completion/cancellation outcomes are recorded; active scans are cancelled when the app backgrounds.
+- Manual inventory entry accepts a valid IP address or hostname, matching the desktop workflow.
 
-- Android local-network access is subject to platform permission requirements. Android 17 (API 37) targeting requires `ACCESS_LOCAL_NETWORK` for direct LAN traffic.
-- iOS requires `NSLocalNetworkUsageDescription`; UDP multicast/broadcast also requires Apple's `com.apple.developer.networking.multicast` entitlement and provisioning approval.
-- iOS broadcast/multicast must be validated on entitled physical-device builds before claiming feature parity.
+## Deliberately unavailable (matches desktop PR #4)
 
-## Status
+- CP Plus, Hikvision and Prama proprietary adapters.
+- Project-camera activation or configuration commands; Contract B currently defines discovery only.
+- Firmware upload/update, reboot, NVR channel management and bulk image configuration.
+- DHCP toggle and DNS write configuration.
+- ONVIF HTTP Basic and Digest (MD5 / MD5-sess with qop=auth) challenge authentication is supported with session-only credentials. Digest SHA-256, qop=auth-int, ONVIF WS-Security and secure OS credential-vault integration are not implemented.
+- Any write operation without a verified adapter contract and recovery path.
 
-Repository bootstrap and architecture baseline. Feature parity is implemented incrementally and must be tested against protocol fixtures and physical cameras. Unsupported or unverified device operations must remain disabled and clearly labelled.
+Unavailable desktop features are represented as unavailable in the mobile app, not as fake active controls.
+
+## Platform requirements
+
+### Android
+Run `bash tool/bootstrap_platforms.sh` to generate standard Android/iOS runners and the Android local-network permission bridge. The bridge requests `ACCESS_LOCAL_NETWORK` when running on Android 17/API 37 and manages the Wi-Fi multicast lock. Confirm targetSdk and test discovery on physical Android devices and different Wi-Fi access points.
+
+### iOS
+The bootstrap script adds `NSLocalNetworkUsageDescription`. ONVIF UDP multicast/broadcast also requires Apple's multicast networking entitlement and an authorized provisioning profile. Request the entitlement from Apple and validate an entitled physical-device build before claiming iOS discovery parity. Without it, iOS may not receive ONVIF multicast replies.
+
+## Security and testing documentation
+
+- [Security and privacy review](docs/security-and-privacy-review.md)
+- [Simulator and integration testing](docs/simulator-and-integration-testing.md)
+- [Desktop-to-mobile parity matrix](docs/parity-matrix.md)
+
+## Setup
+
+Requirements: Flutter stable, Android Studio for Android, Xcode/macOS for iOS.
+
+```bash
+bash tool/bootstrap_platforms.sh
+flutter pub get
+flutter analyze
+flutter test
+flutter run
+```
+
+## Desktop-main parity notes
+
+The mobile UI uses native mobile navigation and responsive layouts rather than copying desktop Qt screens pixel-for-pixel. Desktop inventory backup/restore is represented by a mobile SQLite backup workflow. Unsupported desktop operations remain visibly unavailable; no vendor commands are invented.
+
+## Validation status
+
+Automated Dart tests cover protocol fixtures, redaction, diagnostic log rotation, SQLite integrity checks, version-one schema migration, retention and damaged-database preservation. Flutter CI runs analyze, tests, platform-runner generation and an Android debug APK build. The API 36 plugin compileSdk compatibility patch is applied by the platform bootstrap script. A green workflow is not proof of camera interoperability. Hardware validation must record exact camera model, hardware revision, firmware, network topology and the operations tested.
+
+Desktop PR #4 itself is still a draft release candidate and is **not production ready**: its validation notes say cross-platform build/test, real-camera checks, security review and release packaging remain open. Mobile parity must preserve those same evidence levels rather than overstate support.
+
+
+## Desktop PR #5 parity boundaries
+
+- Operation History and diagnostics are implemented with mobile-native presentation and local file sharing.
+- The desktop Python simulator is not embedded as a background server in the mobile app. Mobile uses deterministic Dart wire fixtures and loopback ONVIF test servers in automated tests; this avoids requiring a rooted phone or binding privileged discovery ports in production.
+- Android native interface diagnostics report MTU and link state; iOS reports link state while MTU is not exposed by the current iOS bridge. Both require physical-device validation. iOS multicast entitlement approval remains an external release gate.
+- Log redaction is best-effort and does not guarantee that all sensitive data is removed. Inspect support bundles before sharing.

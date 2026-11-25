@@ -1,0 +1,130 @@
+class CameraDevice {
+  const CameraDevice({
+    required this.id,
+    required this.ipAddress,
+    this.userLabel = '',
+    this.macAddress = '',
+    this.manufacturer = 'Unknown',
+    this.model = 'Model unknown',
+    this.firmwareVersion = '',
+    this.hardwareId = '',
+    this.serialNumber = '',
+    this.activationState = 'Unknown',
+    this.discoverySources = const [],
+    this.capabilities = const [],
+    this.interfaceName = '',
+    this.onvifEndpoint = '',
+    this.deviceServiceUrl = '',
+    this.networkSummary = '',
+    this.networkInterfaceToken = '',
+    this.ipv4Address = '',
+    this.ipv4SubnetMask = '',
+    this.ipv4Gateway = '',
+    this.ipv4DnsServer = '',
+    this.ipv4DhcpEnabled = false,
+    this.ipv4ConfigurationKnown = false,
+    this.isCandidate = false,
+    this.openPorts = const [],
+    this.lastSeen,
+    this.reachabilityStatus = 'Not checked',
+    this.reachabilityCheckedAt = '',
+    this.lastSuccessfulResponseAt = '',
+  });
+
+  final String id, userLabel, ipAddress, macAddress, manufacturer, model;
+  final String firmwareVersion, hardwareId, serialNumber, activationState;
+  final List<String> discoverySources, capabilities;
+  final String interfaceName, onvifEndpoint, deviceServiceUrl, networkSummary;
+  final String networkInterfaceToken, ipv4Address, ipv4SubnetMask;
+  final String ipv4Gateway, ipv4DnsServer;
+  final bool ipv4DhcpEnabled, ipv4ConfigurationKnown, isCandidate;
+  final List<int> openPorts;
+  final DateTime? lastSeen;
+  final String reachabilityStatus, reachabilityCheckedAt, lastSuccessfulResponseAt;
+
+  CameraDevice copyWith({
+    String? id, String? userLabel, String? ipAddress, String? macAddress,
+    String? manufacturer, String? model, String? firmwareVersion,
+    String? hardwareId, String? serialNumber, String? activationState,
+    List<String>? discoverySources, List<String>? capabilities,
+    String? interfaceName, String? onvifEndpoint, String? deviceServiceUrl,
+    String? networkSummary, String? networkInterfaceToken,
+    String? ipv4Address, String? ipv4SubnetMask, String? ipv4Gateway,
+    String? ipv4DnsServer, bool? ipv4DhcpEnabled,
+    bool? ipv4ConfigurationKnown, bool? isCandidate, List<int>? openPorts,
+    DateTime? lastSeen, String? reachabilityStatus,
+    String? reachabilityCheckedAt, String? lastSuccessfulResponseAt,
+  }) => CameraDevice(
+    id: id ?? this.id, userLabel: userLabel ?? this.userLabel,
+    ipAddress: ipAddress ?? this.ipAddress, macAddress: macAddress ?? this.macAddress,
+    manufacturer: manufacturer ?? this.manufacturer, model: model ?? this.model,
+    firmwareVersion: firmwareVersion ?? this.firmwareVersion,
+    hardwareId: hardwareId ?? this.hardwareId, serialNumber: serialNumber ?? this.serialNumber,
+    activationState: activationState ?? this.activationState,
+    discoverySources: discoverySources ?? this.discoverySources,
+    capabilities: capabilities ?? this.capabilities,
+    interfaceName: interfaceName ?? this.interfaceName,
+    onvifEndpoint: onvifEndpoint ?? this.onvifEndpoint,
+    deviceServiceUrl: deviceServiceUrl ?? this.deviceServiceUrl,
+    networkSummary: networkSummary ?? this.networkSummary,
+    networkInterfaceToken: networkInterfaceToken ?? this.networkInterfaceToken,
+    ipv4Address: ipv4Address ?? this.ipv4Address,
+    ipv4SubnetMask: ipv4SubnetMask ?? this.ipv4SubnetMask,
+    ipv4Gateway: ipv4Gateway ?? this.ipv4Gateway,
+    ipv4DnsServer: ipv4DnsServer ?? this.ipv4DnsServer,
+    ipv4DhcpEnabled: ipv4DhcpEnabled ?? this.ipv4DhcpEnabled,
+    ipv4ConfigurationKnown: ipv4ConfigurationKnown ?? this.ipv4ConfigurationKnown,
+    isCandidate: isCandidate ?? this.isCandidate, openPorts: openPorts ?? this.openPorts,
+    lastSeen: lastSeen ?? this.lastSeen,
+    reachabilityStatus: reachabilityStatus ?? this.reachabilityStatus,
+    reachabilityCheckedAt: reachabilityCheckedAt ?? this.reachabilityCheckedAt,
+    lastSuccessfulResponseAt: lastSuccessfulResponseAt ?? this.lastSuccessfulResponseAt,
+  );
+
+  Map<String, dynamic> toJson() => {
+    'id': id, 'userLabel': userLabel, 'ipAddress': ipAddress, 'macAddress': macAddress,
+    'manufacturer': manufacturer, 'model': model, 'firmwareVersion': firmwareVersion,
+    'hardwareId': hardwareId, 'serialNumber': serialNumber, 'activationState': activationState,
+    'discoverySources': discoverySources, 'capabilities': capabilities,
+    'interfaceName': interfaceName, 'onvifEndpoint': onvifEndpoint,
+    'deviceServiceUrl': deviceServiceUrl, 'networkSummary': networkSummary,
+    'networkInterfaceToken': networkInterfaceToken, 'ipv4Address': ipv4Address,
+    'ipv4SubnetMask': ipv4SubnetMask, 'ipv4Gateway': ipv4Gateway,
+    'ipv4DnsServer': ipv4DnsServer, 'ipv4DhcpEnabled': ipv4DhcpEnabled,
+    'ipv4ConfigurationKnown': ipv4ConfigurationKnown, 'isCandidate': isCandidate,
+    'openPorts': openPorts, 'lastSeen': lastSeen?.toIso8601String(),
+    'reachabilityStatus': reachabilityStatus,
+    'reachabilityCheckedAt': reachabilityCheckedAt,
+    'lastSuccessfulResponseAt': lastSuccessfulResponseAt,
+  };
+
+  factory CameraDevice.fromJson(Map<String, dynamic> json) => CameraDevice(
+    id: json['id'] as String? ?? '', userLabel: json['userLabel'] as String? ?? '',
+    ipAddress: json['ipAddress'] as String? ?? '', macAddress: json['macAddress'] as String? ?? '',
+    manufacturer: json['manufacturer'] as String? ?? 'Unknown',
+    model: json['model'] as String? ?? 'Model unknown',
+    firmwareVersion: json['firmwareVersion'] as String? ?? '',
+    hardwareId: json['hardwareId'] as String? ?? '',
+    serialNumber: json['serialNumber'] as String? ?? '',
+    activationState: json['activationState'] as String? ?? 'Unknown',
+    discoverySources: (json['discoverySources'] as List<dynamic>? ?? []).whereType<String>().toList(),
+    capabilities: (json['capabilities'] as List<dynamic>? ?? []).whereType<String>().toList(),
+    interfaceName: json['interfaceName'] as String? ?? '',
+    onvifEndpoint: json['onvifEndpoint'] as String? ?? '',
+    deviceServiceUrl: json['deviceServiceUrl'] as String? ?? '',
+    networkSummary: json['networkSummary'] as String? ?? '',
+    networkInterfaceToken: json['networkInterfaceToken'] as String? ?? '',
+    ipv4Address: json['ipv4Address'] as String? ?? '',
+    ipv4SubnetMask: json['ipv4SubnetMask'] as String? ?? '',
+    ipv4Gateway: json['ipv4Gateway'] as String? ?? '',
+    ipv4DnsServer: json['ipv4DnsServer'] as String? ?? '',
+    ipv4DhcpEnabled: json['ipv4DhcpEnabled'] as bool? ?? false,
+    ipv4ConfigurationKnown: json['ipv4ConfigurationKnown'] as bool? ?? false,
+    isCandidate: json['isCandidate'] as bool? ?? false,
+    openPorts: (json['openPorts'] as List<dynamic>? ?? []).whereType<num>().map((v) => v.toInt()).toList(),
+    lastSeen: DateTime.tryParse(json['lastSeen'] as String? ?? ''),
+    reachabilityStatus: json['reachabilityStatus'] as String? ?? 'Not checked',
+    reachabilityCheckedAt: json['reachabilityCheckedAt'] as String? ?? '',
+    lastSuccessfulResponseAt: json['lastSuccessfulResponseAt'] as String? ?? '',
+  );
+}
