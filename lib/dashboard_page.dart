@@ -1162,12 +1162,19 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
           )),
         ]),
         const SizedBox(height: 4),
-        Row(children: [
-          TextButton(onPressed: () => setState(() => selected.addAll(visible.map(_key))), child: const Text('Select all')),
-          TextButton(onPressed: () => setState(selected.clear), child: const Text('Clear')),
-          const Spacer(),
-          Text('${selected.length} selected', style: const TextStyle(color: muted, fontSize: 11)),
-        ]),
+        Wrap(
+          alignment: WrapAlignment.spaceBetween,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: 4,
+          children: [
+            TextButton(onPressed: () => setState(() => selected.addAll(visible.map(_key))), child: const Text('Select all')),
+            TextButton(onPressed: () => setState(selected.clear), child: const Text('Clear')),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              child: Text('${selected.length} selected', style: const TextStyle(color: muted, fontSize: 11)),
+            ),
+          ],
+        ),
       ]),
     ),
     Expanded(child: loading ? const Center(child: CircularProgressIndicator()) :
