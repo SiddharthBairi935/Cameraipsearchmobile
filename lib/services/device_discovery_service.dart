@@ -218,11 +218,11 @@ class DeviceDiscoveryService extends ChangeNotifier {
   }
 
   void _sendSsdpProbe(RawDatagramSocket socket) {
-    const probe = 'M-SEARCH * HTTP/1.1\\r\\n'
-        'HOST: 239.255.255.250:1900\\r\\n'
-        'MAN: \\"ssdp:discover\\"\\r\\n'
-        'MX: 2\\r\\n'
-        'ST: ssdp:all\\r\\n\\r\\n';
+    const probe = 'M-SEARCH * HTTP/1.1\r\n'
+        'HOST: 239.255.255.250:1900\r\n'
+        'MAN: "ssdp:discover"\r\n'
+        'MX: 2\r\n'
+        'ST: ssdp:all\r\n\r\n';
     socket.send(ascii.encode(probe), ssdpGroup, ssdpPort);
   }
 
