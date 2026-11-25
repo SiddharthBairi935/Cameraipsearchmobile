@@ -444,6 +444,13 @@ class DeviceDiscoveryService extends ChangeNotifier {
     }
   }
 
+  Future<String> factoryReset(CameraDevice device, {required String factoryDefaultType}) async {
+    final message = await _onvif.factoryReset(device, factoryDefaultType: factoryDefaultType);
+    _setStatus(message);
+    onOperation?.call('Factory reset', device.ipAddress, 'Accepted', message);
+    return message;
+  }
+
   Future<OnvifWriteResult> applyStaticIpv4(CameraDevice device, {
     required String address, required String subnetMask, String gateway = '',
   }) async {
