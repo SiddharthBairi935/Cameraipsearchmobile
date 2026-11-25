@@ -338,15 +338,16 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
   }
 
   Future<void> _export() async {
+    final exportDevices = List<CameraDevice>.unmodifiable(discovery.devices);
     final rows = <List<String>>[
       ['IP ADDRESS','DESCRIPTION','MANUFACTURER','MODEL','MAC','FIRMWARE','STATUS','SOURCE','SERIAL','HARDWARE ID','REACHABILITY','INTERFACES','CAPABILITIES','OPEN PORTS','CAMERA IPV4','MASK','GATEWAY','DNS','DHCP','ONVIF ENDPOINT','SERVICE URL'],
-      ...visible.map((d)=>[d.ipAddress,d.userLabel,d.manufacturer,d.model,d.macAddress,d.firmwareVersion,d.activationState,d.discoverySources.join('; '),d.serialNumber,d.hardwareId,d.reachabilityStatus,d.networkSummary,d.capabilities.join('; '),d.openPorts.join('; '),d.ipv4Address,d.ipv4SubnetMask,d.ipv4Gateway,d.ipv4DnsServer,d.ipv4DhcpEnabled.toString(),d.onvifEndpoint,d.deviceServiceUrl])
+      ...exportDevices.map((d)=>[d.ipAddress,d.userLabel,d.manufacturer,d.model,d.macAddress,d.firmwareVersion,d.activationState,d.discoverySources.join('; '),d.serialNumber,d.hardwareId,d.reachabilityStatus,d.networkSummary,d.capabilities.join('; '),d.openPorts.join('; '),d.ipv4Address,d.ipv4SubnetMask,d.ipv4Gateway,d.ipv4DnsServer,d.ipv4DhcpEnabled.toString(),d.onvifEndpoint,d.deviceServiceUrl])
     ];
     String field(String v)=>'"${v.replaceAll('"','""')}"';
     final dir=await getTemporaryDirectory(), file=File('${dir.path}/oxita-camera-inventory.csv');
     await file.writeAsString('\uFEFF${rows.map((r)=>r.map(field).join(',')).join('\r\n')}\r\n',flush:true);
     await Share.shareXFiles([XFile(file.path)],text:'Oxita camera inventory');
-    await _record('Inventory export', 'oxita-camera-inventory.csv', 'Prepared', '${visible.length} filtered device row(s) exported.');
+    await _record('Inventory export', 'oxita-camera-inventory.csv', 'Prepared', '${exportDevices.length} device row(s) from the complete inventory exported.');
   }
 
   Future<void> _previewStaticIpv4(CameraDevice d) async {
