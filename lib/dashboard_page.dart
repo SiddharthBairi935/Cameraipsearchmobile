@@ -247,8 +247,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
 
   Future<void> _refreshDevice(CameraDevice device) async {
     try {
-      await discovery.refreshDeviceInfo(device);
-    } catch (error) {
+      await discovery.refreshDeviceInfo(device);    } catch (error) {
       _msg('Device refresh failed: $error');
     }
   }
@@ -497,8 +496,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
             child: const Text('Send reset request'),
           ),
         ],
-      ),
-    );
+      ),    );
     if (confirmed != true || !mounted) return;
     try {
       final message = await discovery.factoryReset(device, factoryDefaultType: selectedMode);
@@ -747,17 +745,18 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
           }
         }
       }
-      final targetDevice = device;
-      if (targetDevice == null || !targetDevice.ipv4ConfigurationKnown || targetDevice.networkInterfaceToken.isEmpty) {
+      final targetDevice = device;      if (targetDevice == null || !targetDevice.ipv4ConfigurationKnown || targetDevice.networkInterfaceToken.isEmpty) {
         blocked++;
         await _record('Bulk static IPv4', target.currentAddress, 'Blocked',
           'A current device record with a verified ONVIF interface token is required.');
         continue;
       }
-      if (mounted) setState(() {
-        batchRunning = true;
-        batchProgress = 'Rechecking ${target.proposedAddress} · ${index + 1}/${plan.targets.length}';
-      });
+      if (mounted) {
+        setState(() {
+          batchRunning = true;
+          batchProgress = 'Rechecking ${target.proposedAddress} · ${index + 1}/${plan.targets.length}';
+        });
+      }
       final latestReserved = _reservedIpv4Addresses()
         ..remove(targetDevice.ipAddress);
       final check = await const IpAssignmentPreflight().evaluate(
@@ -771,8 +770,10 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
           'Last-moment conflict check: ${check.single.message}');
         continue;
       }
-      if (mounted) setState(() => batchProgress =
-        'Configuring ${targetDevice.ipAddress} → ${target.proposedAddress} · ${index + 1}/${plan.targets.length}');
+      if (mounted) {
+        setState(() => batchProgress =
+          'Configuring ${targetDevice.ipAddress} → ${target.proposedAddress} · ${index + 1}/${plan.targets.length}');
+      }
       try {
         final result = await discovery.applyStaticIpv4(
           targetDevice, address: target.proposedAddress, subnetMask: plan.subnetMask,
@@ -997,8 +998,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
       child: InkWell(
         borderRadius: BorderRadius.circular(9),
         onTap: () => _details(d),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+        child: Padding(          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
           child: Row(
             children: [
               Checkbox(
@@ -1247,8 +1247,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
           onPressed: () async {
             final uri = Uri(scheme: 'http', host: device.ipAddress);
             final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
-            if (!launched) _msg('Could not open the camera web interface.');
-          },
+            if (!launched) _msg('Could not open the camera web interface.');          },
           icon: const Icon(Icons.open_in_browser), label: const Text('Open web UI'),
         )),
       ]),
@@ -1486,4 +1485,3 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
     ]),
   );
 }
-
