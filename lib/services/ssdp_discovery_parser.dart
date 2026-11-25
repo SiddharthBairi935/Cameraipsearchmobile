@@ -8,11 +8,15 @@ class SsdpDiscoveryParser {
   static CameraDevice? parseResponse(List<int> payload, InternetAddress sender, String interfaceName) {
     if (payload.isEmpty || payload.length > 16 * 1024 ||
         sender.type != InternetAddressType.IPv4 || sender.isLoopback ||
-        sender.isMulticast || sender.address == '0.0.0.0') {\n      return null;\n    }
+        sender.isMulticast || sender.address == '0.0.0.0') {
+      return null;
+    }
     final text = latin1.decode(payload, allowInvalid: true);
     final lines = text.split(RegExp(r'\r?\n'));
     if (lines.isEmpty ||
-        !RegExp(r'^HTTP/1\.[01] 200(?: |$)', caseSensitive: false).hasMatch(lines.first.trim())) return null;
+        !RegExp(r'^HTTP/1\.[01] 200(?: |$)', caseSensitive: false).hasMatch(lines.first.trim())) {
+      return null;
+    }
     final headers = <String, String>{};
     for (final line in lines.skip(1).take(128)) {
       final separator = line.indexOf(':');
