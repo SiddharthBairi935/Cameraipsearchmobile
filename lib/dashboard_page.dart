@@ -12,6 +12,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'models/camera_device.dart';
 import 'models/operation_history_entry.dart';
 import 'services/device_discovery_service.dart';
+import 'services/device_classifier.dart';
 import 'services/inventory_store.dart';
 import 'services/diagnostics_service.dart';
 import 'services/onvif_device_service.dart';
@@ -90,7 +91,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
   String batchProgress = '';
   String databaseIntegrity = 'Checking…';
   String? interfaceName, focusedDeviceKey;
-  String manufacturerFilter = 'All manufacturers', statusFilter = 'All statuses';
+  String manufacturerFilter = 'All manufacturers', statusFilter = 'All statuses', deviceTypeFilter = 'All device types';
   String reachabilityProgress = '', subnetProgress = '';
   String? _lastInventorySnapshot;
 
@@ -261,6 +262,8 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
       'Other / unknown' => !d.discoverySources.any((s)=>s.startsWith('ONVIF')) && d.manufacturer.toLowerCase() != 'oxita',
       _ => true,
     };
+    final classification = DeviceClassifier.classify(d);
+    final typeMatch = deviceTypeFilter == 'All device types' || classification.key == deviceTypeFilter.toLowerCase();
     final status = switch (statusFilter) {
       'Online' => d.reachabilityStatus == 'Reachable',
       'Activated' => d.activationState == 'Activated',
@@ -268,7 +271,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
       'Unverified candidates' => d.isCandidate,
       _ => true,
     };
-    return match && vendor && status;
+    return match && vendor && status && typeMatch;
   }).toList();
 
   Future<void> _discover() async {
@@ -373,6 +376,23 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
       address: values[0], subnetMask: values[1], gateway: values[2],
     );
     if (error != null) { _msg(error); return; }
+    final proposed = InternetAddress.tryParse(values[0]);
+    if (proposed != null) {
+      final reserved = <String>{};
+      for (final network in interfaces) {
+        for (final address in network.addresses) { if (address.type == InternetAddressType.IPv4) reserved.add(address.address); }
+      }
+      for (final other in discovery.devices) {
+        if (_key(other) == _key(d)) continue;
+        if (other.ipAddress.isNotEmpty) reserved.add(other.ipAddress);
+        if (other.ipv4Gateway.isNotEmpty) reserved.add(other.ipv4Gateway);
+        if (other.ipv4DnsServer.isNotEmpty) reserved.add(other.ipv4DnsServer);
+      }
+      if (reserved.contains(proposed.address) && proposed.address != d.ipAddress) {
+        _msg('The proposed address is already reserved by a local interface or another inventory device, gateway or DNS server.');
+        return;
+      }
+    }
     if (!mounted) return;
     await _record('Static IPv4 preview', d.ipAddress, 'Validated', 'Local validation passed for proposed address ${values[0]}; no camera request was sent.');
     if (!mounted) return;
@@ -510,6 +530,18 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
     if(values==null || !mounted)return;
     final validation = NetworkConfigValidator.validateStaticIpv4(address: values[0], subnetMask: values[1], gateway: values[2]);
     if (validation != null) { _msg(validation); return; }
+    final proposed = InternetAddress.tryParse(values[0]);
+    final reserved = <String>{...interfaces.expand((n)=>n.addresses.where((a)=>a.type==InternetAddressType.IPv4).map((a)=>a.address))};
+    for (final other in discovery.devices) {
+      if (_key(other) == _key(d)) continue;
+      if (other.ipAddress.isNotEmpty) reserved.add(other.ipAddress);
+      if (other.ipv4Gateway.isNotEmpty) reserved.add(other.ipv4Gateway);
+      if (other.ipv4DnsServer.isNotEmpty) reserved.add(other.ipv4DnsServer);
+    }
+    if (proposed != null && proposed.address != d.ipAddress && reserved.contains(proposed.address)) {
+      _msg('Address is already used by a local interface or another inventory device, gateway or DNS server.');
+      return;
+    }
     final ok=await showDialog<bool>(context:context,builder:(context)=>AlertDialog(
       title:const Text('Confirm network change'),
       content:Text('Apply ${values[0]} / ${values[1]} to ${d.ipAddress}? The app will verify the new IP before updating inventory.'),
@@ -792,6 +824,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
         const SizedBox(width:10),Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
           Text(d.userLabel.isEmpty?d.ipAddress:d.userLabel,style:const TextStyle(fontWeight:FontWeight.w800)),
           Text('${d.ipAddress} · ${d.manufacturer} · ${d.model}',maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(color:muted,fontSize:11)),
+          Text(() { final c=DeviceClassifier.classify(d); return '${c.label} · ${c.confidenceLabel}'; }(),style:const TextStyle(color:red,fontSize:10,fontWeight:FontWeight.w700)),
           Text('${d.isCandidate?'Unverified candidate':d.reachabilityStatus} · ${d.discoverySources.join(', ')}',maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(color:muted,fontSize:10)),
         ])),
         IconButton(onPressed:()=>unawaited(_rename(d)),icon:const Icon(Icons.edit_outlined,size:18)),const Icon(Icons.chevron_right,color:muted),
@@ -805,8 +838,8 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
   Widget _overview()=>ListView(padding:const EdgeInsets.all(18),children:[
     _heading('Device manager','Discover, verify and configure compatible cameras'),
     const SizedBox(height:14),
-    DropdownButtonFormField<String>(key:ValueKey(interfaceName),initialValue:interfaceName,isExpanded:true,decoration:const InputDecoration(labelText:'Active network interface',prefixIcon:Icon(Icons.lan_outlined)),
-      items:interfaces.map((n)=>DropdownMenuItem(value:n.name,child:Text(n.name))).toList(),onChanged:(v){setState(()=>interfaceName=v);unawaited(_loadNativeInterfaceDetails(v));}),
+    DropdownButtonFormField<String>(key:ValueKey(interfaceName),initialValue:interfaceName,isExpanded:true,decoration:const InputDecoration(labelText:'Discovery interface',prefixIcon:Icon(Icons.lan_outlined)),
+      items:[const DropdownMenuItem<String>(value:'',child:Text('All active IPv4 interfaces')), ...interfaces.map((n)=>DropdownMenuItem(value:n.name,child:Text(n.name)))],onChanged:(v){setState(()=>interfaceName=v);unawaited(_loadNativeInterfaceDetails(v));}),
     const SizedBox(height:8),
     Card(child: ListTile(
       dense: true,
@@ -849,6 +882,9 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
     Padding(padding:const EdgeInsets.fromLTRB(16,14,16,8),child:Column(children:[
       _heading('Device inventory','${visible.length} matching device(s)'),
       const SizedBox(height:10),TextField(controller:search,onChanged:(_)=>setState((){}),decoration:const InputDecoration(prefixIcon:Icon(Icons.search),hintText:'Search IP, MAC, model, serial or label')),
+      const SizedBox(height:8),
+      DropdownButtonFormField<String>(key:ValueKey(deviceTypeFilter),initialValue:deviceTypeFilter,isExpanded:true,decoration:const InputDecoration(labelText:'Device type'),
+        items:const ['All device types','camera','nvr','router','switch','printer','computer','unknown'].map((v)=>DropdownMenuItem(value:v,child:Text(v=='All device types'?v:'${v[0].toUpperCase()}${v.substring(1)}',overflow:TextOverflow.ellipsis))).toList(),onChanged:(v)=>setState(()=>deviceTypeFilter=v??'All device types')),
       const SizedBox(height:8),Row(children:[
         Expanded(child:DropdownButtonFormField<String>(key:ValueKey(manufacturerFilter),initialValue:manufacturerFilter,isExpanded:true,decoration:const InputDecoration(labelText:'Manufacturer'),
           items:const ['All manufacturers','ONVIF devices','Oxita devices','Other / unknown'].map((v)=>DropdownMenuItem(value:v,child:Text(v,overflow:TextOverflow.ellipsis))).toList(),onChanged:(v)=>setState(()=>manufacturerFilter=v??'All manufacturers'))),
@@ -863,7 +899,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
 
   Widget _tools()=>ListView(padding:const EdgeInsets.all(18),children:[
     _heading('Network tools','Installer and field-technician workflows'),
-    _tool(Icons.radar,'ONVIF + Oxita discovery','Discover devices on selected IPv4 interface.',()=>unawaited(_discover())),
+    _tool(Icons.radar,'ONVIF + Oxita + UPnP discovery','Discover devices on selected or all active IPv4 interfaces.',()=>unawaited(_discover())),
     _tool(Icons.lan,discovery.isSubnetScanning?'Cancel subnet scan':'Bounded subnet scan','Probe up to 256 IPv4 hosts; TCP responders remain unverified candidates. $subnetProgress',()=>unawaited(_subnet())),
     _tool(Icons.network_check,checking?'Cancel reachability checks':'Check reachability','Checks selected devices or all visible devices when none selected.',()=>unawaited(_reachability())),
     _tool(Icons.add_link,'Add device manually','Add a known camera IPv4 address.',()=>unawaited(_manual())),
@@ -873,7 +909,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
     if (_focusedDevice != null) _tool(Icons.verified_outlined,'Validate firmware package candidate','Check manifest identity and SHA-256 for the selected camera. Does not flash.',()=>unawaited(_validateFirmwareCandidate(_focusedDevice!))),
     const SizedBox(height:14),_heading('Feature availability','Unimplemented desktop features stay unavailable'),
     _cap('ONVIF discovery and enrichment','Available when supported',true),
-    _cap('TCP reachability and bounded scan','Available',true),
+    _cap('TCP reachability and expanded subnet scan','Common camera, management, printer and computer ports; up to 4,096 hosts',true),
     _cap('Static IPv4 over ONVIF','Single-camera workflow · verified interface required',true),
     _cap('Batch read-only refresh','Sequential, per-device preflight and cancellation',true),
     _cap('Multi-camera IPv4 planning','Dry-run only · live ARP/DAD backend unavailable on mobile',false),
