@@ -345,7 +345,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
     String field(String v)=>'"${v.replaceAll('"','""')}"';
     final dir=await getTemporaryDirectory(), file=File('${dir.path}/oxita-camera-inventory.csv');
     await file.writeAsString('\uFEFF${rows.map((r)=>r.map(field).join(',')).join('\r\n')}\r\n',flush:true);
-    await Share.shareXFiles([XFile(file.path)],text:'Oxita camera inventory');
+    await SharePlus.instance.share(ShareParams(files: [XFile(file.path)], text: 'Oxita camera inventory'));
     await _record('Inventory export', 'oxita-camera-inventory.csv', 'Prepared', '${exportDevices.length} device row(s) from the complete inventory exported.');
   }
 
@@ -846,7 +846,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
       final digestInput = sha256.startChunkedConversion(digestSink);
       var packageLength = 0;
       await for (final chunk in stream) {
-        packageLength += chunk.length;
+        packageLength += chunk.length.toInt();
         if (packageLength > 64 * 1024 * 1024) {
           digestInput.close();
           throw const FormatException('Firmware package exceeds the 64 MiB mobile validation limit.');
@@ -1162,12 +1162,19 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
           )),
         ]),
         const SizedBox(height: 4),
-        Row(children: [
-          TextButton(onPressed: () => setState(() => selected.addAll(visible.map(_key))), child: const Text('Select all')),
-          TextButton(onPressed: () => setState(selected.clear), child: const Text('Clear')),
-          const Spacer(),
-          Text('${selected.length} selected', style: const TextStyle(color: muted, fontSize: 11)),
-        ]),
+        Wrap(
+          alignment: WrapAlignment.spaceBetween,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: 4,
+          children: [
+            TextButton(onPressed: () => setState(() => selected.addAll(visible.map(_key))), child: const Text('Select all')),
+            TextButton(onPressed: () => setState(selected.clear), child: const Text('Clear')),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              child: Text('${selected.length} selected', style: const TextStyle(color: muted, fontSize: 11)),
+            ),
+          ],
+        ),
       ]),
     ),
     Expanded(child: loading ? const Center(child: CircularProgressIndicator()) :
@@ -1344,7 +1351,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
       final directory = await getTemporaryDirectory();
       final file = File('${directory.path}/oxita-mobile-diagnostics.txt');
       await file.writeAsString(content, flush: true);
-      await Share.shareXFiles([XFile(file.path)], text: 'Oxita Camera IP Search diagnostic bundle');
+      await SharePlus.instance.share(ShareParams(files: [XFile(file.path)], text: 'Oxita Camera IP Search diagnostic bundle'));
       await _record('Diagnostic export', file.uri.pathSegments.last, 'Prepared',
           'User inspected the redacted support bundle before opening the share sheet.');
     } catch (error) {
@@ -1404,7 +1411,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
       final directory = await getTemporaryDirectory();
       final file = File('${directory.path}/oxita-mobile-inventory-${DateTime.now().toUtc().toIso8601String().replaceAll(':','-')}.db');
       await store.exportBackup(file);
-      await Share.shareXFiles([XFile(file.path)], text: 'Oxita Camera IP Search inventory backup');
+      await SharePlus.instance.share(ShareParams(files: [XFile(file.path)], text: 'Oxita Camera IP Search inventory backup'));
       await _record('Inventory backup', file.uri.pathSegments.last, 'Prepared',
           'SQLite integrity was checkpointed before the user shared the backup.');
     } catch (error) {
