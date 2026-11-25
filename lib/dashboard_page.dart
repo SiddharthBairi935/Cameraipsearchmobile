@@ -642,13 +642,17 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
       _msg('Select at least one camera in Devices before creating an assignment plan.');
       return;
     }
+    if (targets.length > 256) {
+      _msg('Bulk IPv4 is limited to 256 cameras per operation.');
+      return;
+    }
     final start = TextEditingController();
     final end = TextEditingController();
     final mask = TextEditingController(text: '255.255.255.0');
     final values = await showDialog<List<String>>(context: context, builder: (context) => AlertDialog(
       title: const Text('Plan multi-camera IPv4 addresses'),
       content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Text('Dry-run plan for ${targets.length} selected device(s). No camera requests will be sent.', style: const TextStyle(color: muted, fontSize: 12)),
+        Text('Sequential operation for ${targets.length} selected camera(s). Each camera is checked immediately before its own write.', style: const TextStyle(color: muted, fontSize: 12)),
         TextField(controller: start, decoration: const InputDecoration(labelText: 'Range start')),
         TextField(controller: end, decoration: const InputDecoration(labelText: 'Range end')),
         TextField(controller: mask, decoration: const InputDecoration(labelText: 'Subnet mask')),
@@ -661,17 +665,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
     start.dispose(); end.dispose(); mask.dispose();
     if (values == null || !mounted) return;
     try {
-      final reserved = <String>{};
-      for (final device in discovery.devices) {
-        if (device.ipAddress.isNotEmpty) reserved.add(device.ipAddress);
-        if (device.ipv4Gateway.isNotEmpty) reserved.add(device.ipv4Gateway);
-        if (device.ipv4DnsServer.isNotEmpty) reserved.add(device.ipv4DnsServer);
-      }
-      for (final network in interfaces) {
-        for (final address in network.addresses) {
-          if (address.type == InternetAddressType.IPv4) reserved.add(address.address);
-        }
-      }
+      final reserved = _reservedIpv4Addresses();
       final plan = IpAssignmentPlanner.build(
         startAddress: values[0], endAddress: values[1], subnetMask: values[2],
         selectedDevices: targets.map((d) => IpAssignmentTarget(deviceId: d.id, currentAddress: d.ipAddress)).toList(),
@@ -681,25 +675,118 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
         plan: plan.targets, inventoryAddresses: reserved, probe: _probeIpv4Conflict,
       );
       final ready = preflight.where((r) => r.state == IpAssignmentPreflightState.ready).length;
+      final allReady = ready == plan.targets.length;
       final report = preflight.map((r) =>
         '${r.target.currentAddress} → ${r.target.proposedAddress}\n${r.state.name}: ${r.message}').join('\n\n');
       await _record('IP assignment plan', 'Selected devices', 'Previewed',
-          '${plan.targets.length} proposed address(es); $ready passed live preflight. No changes sent.');
+          '${plan.targets.length} proposed address(es); $ready passed preflight. No changes sent.');
       if (!mounted) return;
-      await showDialog<void>(context: context, builder: (context) => AlertDialog(
-        title: const Text('Assignment plan · dry run'),
+      final apply = await showDialog<bool>(context: context, builder: (context) => AlertDialog(
+        title: const Text('Assignment plan · preflight'),
         content: SizedBox(width: 560, child: SingleChildScrollView(child: SelectableText(
-          '$report\n\nNo assignments were applied. This mobile build has no validated live ARP/DAD backend on the current platform; Unknown blocks assignment. A future apply workflow must repeat conflict checks immediately before each write.',
+          '$report\n\n${allReady
+            ? 'All targets passed the current preflight. The app will repeat the address check immediately before each sequential camera write. There is no automatic rollback if a camera disconnects.'
+            : 'Execution is blocked. Every target must have a verified clear result. An unknown/no-response result is not proof that an address is free.'}',
           style: const TextStyle(fontSize: 12, height: 1.45),
         ))),
-        actions: [FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Close'))],
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Close')),
+          if (allReady)
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: red),
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Confirm sequential assignment'),
+            ),
+        ],
       ));
+      if (apply != true || !mounted) return;
+      await _applyIpAssignmentPlan(plan, targets);
     } on FormatException catch (error) {
       await _record('IP assignment plan', 'Selected devices', 'Failed', error.message);
       _msg(error.message);
     } catch (error) {
       await _record('IP assignment plan', 'Selected devices', 'Failed', error.toString());
       _msg('Could not build assignment plan: $error');
+    }
+  }
+
+  Set<String> _reservedIpv4Addresses() {
+    final reserved = <String>{};
+    for (final device in discovery.devices) {
+      if (device.ipAddress.isNotEmpty) reserved.add(device.ipAddress);
+      if (device.ipv4Gateway.isNotEmpty) reserved.add(device.ipv4Gateway);
+      if (device.ipv4DnsServer.isNotEmpty) reserved.add(device.ipv4DnsServer);
+    }
+    for (final network in interfaces) {
+      for (final address in network.addresses) {
+        if (address.type == InternetAddressType.IPv4) reserved.add(address.address);
+      }
+    }
+    return reserved;
+  }
+
+  Future<void> _applyIpAssignmentPlan(IpAssignmentPlan plan, List<CameraDevice> originalTargets) async {
+    var succeeded = 0;
+    var blocked = 0;
+    var failed = 0;
+    for (var index = 0; index < plan.targets.length; index++) {
+      final target = plan.targets[index];
+      final device = discovery.devices.cast<CameraDevice?>().firstWhere(
+        (item) => item?.id == target.deviceId,
+        orElse: () => originalTargets.cast<CameraDevice?>().firstWhere(
+          (item) => item?.id == target.deviceId, orElse: () => null),
+      );
+      if (device == null || !device.ipv4ConfigurationKnown || device.networkInterfaceToken.isEmpty) {
+        blocked++;
+        await _record('Bulk static IPv4', target.currentAddress, 'Blocked',
+          'A current device record with a verified ONVIF interface token is required.');
+        continue;
+      }
+      if (mounted) setState(() {
+        batchRunning = true;
+        batchProgress = 'Rechecking ${target.proposedAddress} · ${index + 1}/${plan.targets.length}';
+      });
+      final latestReserved = _reservedIpv4Addresses()
+        ..remove(device.ipAddress);
+      final check = await const IpAssignmentPreflight().evaluate(
+        plan: [target],
+        inventoryAddresses: latestReserved,
+        probe: _probeIpv4Conflict,
+      );
+      if (check.single.state != IpAssignmentPreflightState.ready) {
+        blocked++;
+        await _record('Bulk static IPv4', target.currentAddress, 'Blocked',
+          'Last-moment conflict check: ${check.single.message}');
+        continue;
+      }
+      if (mounted) setState(() => batchProgress =
+        'Configuring ${device.ipAddress} → ${target.proposedAddress} · ${index + 1}/${plan.targets.length}');
+      try {
+        final result = await discovery.applyStaticIpv4(
+          device, address: target.proposedAddress, subnetMask: plan.subnetMask,
+        );
+        await store.save(discovery.devices);
+        if (result.verified) {
+          succeeded++;
+          await _record('Bulk static IPv4', target.currentAddress, 'Verified', result.message);
+        } else {
+          failed++;
+          await _record('Bulk static IPv4', target.currentAddress, 'Partial', result.message);
+        }
+      } on OnvifException catch (error) {
+        failed++;
+        await _record('Bulk static IPv4', target.currentAddress, 'Failed', error.message);
+      } catch (error) {
+        failed++;
+        await _record('Bulk static IPv4', target.currentAddress, 'Failed', error.toString());
+      }
+    }
+    await store.save(discovery.devices);
+    await _record('Bulk static IPv4 batch', 'Selected cameras', 'Finished',
+      '$succeeded verified; $blocked blocked by preflight; $failed failed or partially applied. No automatic rollback is available.');
+    if (mounted) {
+      setState(() { batchRunning = false; batchProgress = ''; selected.clear(); });
+      _msg('Bulk IPv4 finished: $succeeded verified, $blocked blocked, $failed failed/partial.');
     }
   }
 
