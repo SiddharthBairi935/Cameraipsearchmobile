@@ -882,6 +882,9 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
     Padding(padding:const EdgeInsets.fromLTRB(16,14,16,8),child:Column(children:[
       _heading('Device inventory','${visible.length} matching device(s)'),
       const SizedBox(height:10),TextField(controller:search,onChanged:(_)=>setState((){}),decoration:const InputDecoration(prefixIcon:Icon(Icons.search),hintText:'Search IP, MAC, model, serial or label')),
+      const SizedBox(height:8),
+      DropdownButtonFormField<String>(key:ValueKey(deviceTypeFilter),initialValue:deviceTypeFilter,isExpanded:true,decoration:const InputDecoration(labelText:'Device type'),
+        items:const ['All device types','camera','nvr','router','switch','printer','computer','unknown'].map((v)=>DropdownMenuItem(value:v,child:Text(v=='All device types'?v:'${v[0].toUpperCase()}${v.substring(1)}',overflow:TextOverflow.ellipsis))).toList(),onChanged:(v)=>setState(()=>deviceTypeFilter=v??'All device types')),
       const SizedBox(height:8),Row(children:[
         Expanded(child:DropdownButtonFormField<String>(key:ValueKey(manufacturerFilter),initialValue:manufacturerFilter,isExpanded:true,decoration:const InputDecoration(labelText:'Manufacturer'),
           items:const ['All manufacturers','ONVIF devices','Oxita devices','Other / unknown'].map((v)=>DropdownMenuItem(value:v,child:Text(v,overflow:TextOverflow.ellipsis))).toList(),onChanged:(v)=>setState(()=>manufacturerFilter=v??'All manufacturers'))),
