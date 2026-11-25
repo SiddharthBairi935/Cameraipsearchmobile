@@ -845,7 +845,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
                 _heading('Device', 'Read-only enrichment and supported maintenance'),
                 _tool(Icons.refresh, 'Refresh device information', 'Request ONVIF device information, capabilities and network profile.', () { Navigator.pop(sheetContext); unawaited(_refreshDevice(d)); }),
                 _tool(Icons.verified_outlined, 'Validate firmware candidate', 'Manifest identity and SHA-256 only. This does not install or flash firmware.', () { Navigator.pop(sheetContext); unawaited(_validateFirmwareCandidate(d)); }),
-                _tool(Icons.restore, 'Factory reset', canFactoryReset ? 'ONVIF request only; camera support, credentials and explicit confirmation required.' : 'Unavailable until a compatible ONVIF service is identified.', () { Navigator.pop(sheetContext); unawaited(_factoryReset(d)); }),
+                _tool(Icons.restore, 'Factory reset', canFactoryReset ? 'ONVIF request only; camera support, credentials and explicit confirmation required.' : 'Unavailable until a compatible ONVIF service is identified.', () { Navigator.pop(sheetContext); unawaited(_factoryReset(d)); }, enabled: canFactoryReset),
                 _cap('Reboot', 'Not implemented by desktop main', false),
                 const Divider(height: 24),
                 _heading('Network', 'Camera-side IPv4 settings reported by ONVIF'),
@@ -854,8 +854,8 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
                 _detail('Gateway', d.ipv4Gateway),
                 _detail('DNS', d.ipv4DnsServer),
                 _detail('DHCP', d.ipv4ConfigurationKnown ? (d.ipv4DhcpEnabled ? 'Enabled' : 'Disabled') : 'Unknown'),
-                _tool(Icons.preview_outlined, 'Preview static IPv4', canConfigure ? 'Validate a proposed address without changing the camera.' : 'Refresh the camera first; a verified interface token is required.', canConfigure ? () { Navigator.pop(sheetContext); unawaited(_previewStaticIpv4(d)); } : () {}),
-                _tool(Icons.settings_ethernet, 'Apply static IPv4', canConfigure ? 'Send a guarded ONVIF network change after validation and confirmation.' : 'Unavailable until a verified ONVIF interface profile is available.', canConfigure ? () { Navigator.pop(sheetContext); unawaited(_staticIp(d)); } : () {}),
+                _tool(Icons.preview_outlined, 'Preview static IPv4', canConfigure ? 'Validate a proposed address without changing the camera.' : 'Refresh the camera first; a verified interface token is required.', () { Navigator.pop(sheetContext); unawaited(_previewStaticIpv4(d)); }, enabled: canConfigure),
+                _tool(Icons.settings_ethernet, 'Apply static IPv4', canConfigure ? 'Send a guarded ONVIF network change after validation and confirmation.' : 'Unavailable until a verified ONVIF interface profile is available.', () { Navigator.pop(sheetContext); unawaited(_staticIp(d)); }, enabled: canConfigure),
                 const Divider(height: 24),
                 _heading('Storage', 'Local inventory backup and recovery'),
                 _tool(Icons.backup_outlined, 'Back up inventory', 'Export a consistent local SQLite inventory and operation-history backup.', () { Navigator.pop(sheetContext); unawaited(_backupInventory()); }),
@@ -887,10 +887,6 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
     Expanded(child:SelectableText(value.isEmpty?'Not available':value,style:const TextStyle(fontSize:13))),
   ]));
 
-  Widget _metric(String label,String value,IconData icon)=>Expanded(child:Card(child:Padding(padding:const EdgeInsets.all(12),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-    Icon(icon,color:red),const SizedBox(height:10),Text(value,style:const TextStyle(fontSize:23,fontWeight:FontWeight.w800)),
-    Text(label,style:const TextStyle(color:muted,fontSize:9,fontWeight:FontWeight.w700)),
-  ]))));
 
   Widget _deviceCard(CameraDevice d) {
     final checked = selected.contains(_key(d));
@@ -1104,7 +1100,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
     _cap('CP Plus / Hikvision / Prama adapters','No verified vendor adapters',false),
   ]);
 
-  Widget _tool(IconData icon,String title,String subtitle,VoidCallback action)=>Card(child:ListTile(leading:Icon(icon,color:red),title:Text(title),subtitle:Text(subtitle),trailing:const Icon(Icons.chevron_right),onTap:action));
+  Widget _tool(IconData icon, String title, String subtitle, VoidCallback action, {bool enabled = true}) => Card(child: ListTile(leading: Icon(icon, color: enabled ? red : muted), title: Text(title), subtitle: Text(subtitle), trailing: Icon(Icons.chevron_right, color: enabled ? muted : Colors.white24), onTap: enabled ? action : null));
   Widget _cap(String title,String subtitle,bool ok)=>Card(child:ListTile(dense:true,title:Text(title),subtitle:Text(subtitle),trailing:Icon(ok?Icons.check_circle_outline:Icons.lock_outline,color:ok?const Color(0xFF74C69D):muted)));
 
   CameraDevice? get _focusedDevice {
