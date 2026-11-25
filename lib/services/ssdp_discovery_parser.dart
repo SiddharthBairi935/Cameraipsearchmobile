@@ -18,7 +18,7 @@ class SsdpDiscoveryParser {
       if (separator <= 0) continue;
       final key = line.substring(0,separator).trim().toLowerCase();
       if (key.isEmpty || headers.containsKey(key)) continue;
-      headers[key] = line.substring(separator+1).trim().substring(0, line.substring(separator+1).trim().length.clamp(0,2048));
+      final value = line.substring(separator+1).trim();\n      headers[key] = value.length > 2048 ? value.substring(0,2048) : value;
     }
     final st = headers['st'] ?? '';
     final usn = headers['usn'] ?? '';
