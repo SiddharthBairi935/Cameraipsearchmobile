@@ -731,11 +731,15 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
     var failed = 0;
     for (var index = 0; index < plan.targets.length; index++) {
       final target = plan.targets[index];
-      final device = discovery.devices.cast<CameraDevice?>().firstWhere(
-        (item) => item?.id == target.deviceId,
-        orElse: () => originalTargets.cast<CameraDevice?>().firstWhere(
-          (item) => item?.id == target.deviceId, orElse: () => null),
-      );
+      CameraDevice? device;
+      for (final candidate in discovery.devices) {
+        if (candidate.id == target.deviceId) { device = candidate; break; }
+      }
+      if (device == null) {
+        for (final candidate in originalTargets) {
+          if (candidate.id == target.deviceId) { device = candidate; break; }
+        }
+      }
       if (device == null || !device.ipv4ConfigurationKnown || device.networkInterfaceToken.isEmpty) {
         blocked++;
         await _record('Bulk static IPv4', target.currentAddress, 'Blocked',
@@ -1172,14 +1176,14 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
     _tool(Icons.add_link,'Add device manually','Add a known camera IPv4 address.',()=>unawaited(_manual())),
     _tool(Icons.file_download,'Export inventory CSV','Share filtered inventory with device, network and capability fields.',()=>unawaited(_export())),
     _tool(Icons.playlist_add_check,'Batch refresh selected cameras',batchRunning ? batchProgress : 'Sequential ONVIF read-only refresh; unsupported targets are skipped.',()=>unawaited(_batchRefresh())),
-    _tool(Icons.route,'Multi-camera IPv4 assignment planner','Create a dry-run range plan for selected cameras. Live conflict checks are fail-closed.',()=>unawaited(_previewIpAssignmentPlan())),
+    _tool(Icons.route,'Multi-camera IPv4 assignment','Plan, preflight and sequentially apply static addresses to selected cameras. Writes remain blocked unless every live conflict probe positively reports clear.',()=>unawaited(_previewIpAssignmentPlan()),enabled: !batchRunning),
     if (_focusedDevice != null) _tool(Icons.verified_outlined,'Validate firmware package candidate','Check manifest identity and SHA-256 for the selected camera. Does not flash.',()=>unawaited(_validateFirmwareCandidate(_focusedDevice!))),
     const SizedBox(height:14),_heading('Feature availability','Unimplemented desktop features stay unavailable'),
     _cap('ONVIF discovery and enrichment','Available when supported',true),
     _cap('TCP reachability and expanded subnet scan','Common camera, management, printer and computer ports; up to 4,096 hosts',true),
     _cap('Static IPv4 over ONVIF','Single-camera workflow · verified interface required',true),
     _cap('Batch read-only refresh','Sequential, per-device preflight and cancellation',true),
-    _cap('Multi-camera IPv4 planning','Dry-run only · live ARP/DAD backend unavailable on mobile',false),
+    _cap('Multi-camera IPv4 assignment','Sequential ONVIF writes with per-camera immediate preflight; Android/iOS currently fail closed when probe cannot prove clear',true),
     _cap('Firmware package candidate validation','Metadata + SHA-256 only · no signature verification or flashing',true),
     _cap('Bulk image settings','Not implemented',false),
     _cap('Activation / reboot / firmware','Not implemented',false),
