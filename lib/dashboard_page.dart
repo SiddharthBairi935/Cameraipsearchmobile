@@ -734,14 +734,21 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
       final target = plan.targets[index];
       CameraDevice? device;
       for (final candidate in discovery.devices) {
-        if (candidate.id == target.deviceId) { device = candidate; break; }
+        if (candidate.id == target.deviceId) {
+          device = candidate;
+          break;
+        }
       }
       if (device == null) {
         for (final candidate in originalTargets) {
-          if (candidate.id == target.deviceId) { device = candidate; break; }
+          if (candidate.id == target.deviceId) {
+            device = candidate;
+            break;
+          }
         }
       }
-      if (device == null || !device.ipv4ConfigurationKnown || device.networkInterfaceToken.isEmpty) {
+      final targetDevice = device;
+      if (targetDevice == null || !targetDevice.ipv4ConfigurationKnown || targetDevice.networkInterfaceToken.isEmpty) {
         blocked++;
         await _record('Bulk static IPv4', target.currentAddress, 'Blocked',
           'A current device record with a verified ONVIF interface token is required.');
@@ -752,7 +759,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
         batchProgress = 'Rechecking ${target.proposedAddress} · ${index + 1}/${plan.targets.length}';
       });
       final latestReserved = _reservedIpv4Addresses()
-        ..remove(device.ipAddress);
+        ..remove(targetDevice.ipAddress);
       final check = await const IpAssignmentPreflight().evaluate(
         plan: [target],
         inventoryAddresses: latestReserved,
@@ -765,10 +772,10 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
         continue;
       }
       if (mounted) setState(() => batchProgress =
-        'Configuring ${device.ipAddress} → ${target.proposedAddress} · ${index + 1}/${plan.targets.length}');
+        'Configuring ${targetDevice.ipAddress} → ${target.proposedAddress} · ${index + 1}/${plan.targets.length}');
       try {
         final result = await discovery.applyStaticIpv4(
-          device, address: target.proposedAddress, subnetMask: plan.subnetMask,
+          targetDevice, address: target.proposedAddress, subnetMask: plan.subnetMask,
         );
         await store.save(discovery.devices);
         if (result.verified) {
