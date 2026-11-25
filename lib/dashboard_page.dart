@@ -1469,10 +1469,11 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
   @override
   Widget build(BuildContext context)=>Scaffold(
     appBar:AppBar(title:Row(children:[
-      Image.asset('assets/oxita-logo.png',width:132,height:42,fit:BoxFit.contain,
-        errorBuilder:(context,error,stack)=>const Icon(Icons.camera_alt,color:red,size:30)),
-      const SizedBox(width:10),
-      const Text('CAMERA DEVICE MANAGER',style:TextStyle(fontSize:9,color:muted,fontWeight:FontWeight.w800,letterSpacing:1)),
+      Image.asset('assets/oxita-logo.png',width:96,height:40,fit:BoxFit.contain,
+        errorBuilder:(context,error,stack)=>const Icon(Icons.camera_alt,color:red,size:28)),
+      const SizedBox(width:8),
+      const Expanded(child:Text('CAMERA DEVICE MANAGER',maxLines:1,overflow:TextOverflow.ellipsis,
+        style:TextStyle(fontSize:9,color:muted,fontWeight:FontWeight.w800,letterSpacing:1))),
     ]),actions:[IconButton(onPressed:()=>unawaited(_help()),icon:const Icon(Icons.help_outline),tooltip:'Help'),IconButton(onPressed:()=>unawaited(_manual()),icon:const Icon(Icons.add_circle_outline),tooltip:'Add device'),IconButton(onPressed:()=>unawaited(_export()),icon:const Icon(Icons.file_download),tooltip:'Export CSV')]),
     body:SafeArea(child:IndexedStack(index:tab,children:[_overview(),_devices(),_tools(),_maintenance(),_history(),_settings()])),
     floatingActionButton:tab<2?FloatingActionButton.extended(onPressed:()=>unawaited(_discover()),backgroundColor:red,foregroundColor:Colors.white,
