@@ -82,8 +82,6 @@ void main() {
       await server.close(force: true);
     }
   });
-}
-
 
   test('factory reset sends the selected ONVIF Soft mode and reports acceptance', () async {
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
@@ -116,8 +114,7 @@ void main() {
       await server.close(force: true);
     }
   });
-
-  test('factory reset rejects unsupported modes without sending a request', () async {
+ () async {
     final device = CameraDevice(
       id: '127.0.0.1',
       ipAddress: '127.0.0.1',
@@ -129,3 +126,4 @@ void main() {
       throwsA(isA<OnvifException>()),
     );
   });
+}
