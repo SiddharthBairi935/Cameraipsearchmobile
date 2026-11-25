@@ -542,12 +542,12 @@ class DeviceDiscoveryService extends ChangeNotifier {
     final first = network + 1;
     final last = broadcast - 1;
     if (last < first) throw const FormatException('Invalid subnet.');
-    _isSubnetScanning = true;
     final hostCount = last - first + 1;
     if (hostCount > 4096 && fullSubnet) {
       throw const FormatException('Full subnet scans are limited to 4,096 hosts. Use the 256-address window on larger networks.');
     }
     final scanAll = hostCount <= 4096;
+    _isSubnetScanning = true;
     final end = scanAll ? last : (own + 128 < last ? own + 128 : last);
     final start = scanAll ? first : (own - 127 > first ? own - 127 : first);
     final hosts = <int>[];
