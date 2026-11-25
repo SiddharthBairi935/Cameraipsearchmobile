@@ -407,11 +407,85 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
         Text('Network configuration', style: TextStyle(fontWeight: FontWeight.w800)),
         Text('Static IPv4 changes require a verified ONVIF interface token. Preview validates values without sending a request. Applying may interrupt connectivity; there is no automatic rollback.'),
         SizedBox(height: 10),
-        Text('Feature availability', style: TextStyle(fontWeight: FontWeight.w800)),
-        Text('Bulk image settings, activation, reboot, NVR channels and firmware flashing are not implemented in desktop main and remain unavailable here. Firmware package metadata/SHA-256 candidate validation is available; it does not authorize flashing.'),
+        Text('Camera maintenance', style: TextStyle(fontWeight: FontWeight.w800)),
+        Text('ONVIF factory reset supports explicit Soft/Hard requests when the camera exposes and authorizes SetSystemFactoryDefault. It can erase settings and change the camera IP. Reboot, activation, NVR channels and firmware flashing remain unavailable.'),
+        SizedBox(height: 10),
+        Text('Bulk IPv4', style: TextStyle(fontWeight: FontWeight.w800)),
+        Text('Desktop main supports sequential bulk static IPv4 assignment after a complete preview and per-camera conflict checks. Mobile keeps execution blocked unless a platform probe can positively establish that each address is clear; unknown is never treated as free.'),
       ])),
       actions: [FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Close'))],
     ));
+  }
+
+  Future<void> _factoryReset(CameraDevice device) async {
+    if (!device.discoverySources.any((source) => source.startsWith('ONVIF')) ||
+        device.deviceServiceUrl.isEmpty) {
+      _msg('Factory reset requires a verified ONVIF camera. Refresh device information first.');
+      return;
+    }
+    var mode = 'Soft';
+    final selectedMode = await showDialog<String>(
+      context: context,
+      builder: (context) => StatefulBuilder(builder: (context, setDialogState) => AlertDialog(
+        title: const Text('Choose factory-reset mode'),
+        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('Target: ${device.ipAddress} · ${device.manufacturer} · ${device.model}'),
+          const SizedBox(height: 12),
+          RadioListTile<String>(
+            contentPadding: EdgeInsets.zero,
+            value: 'Soft',
+            groupValue: mode,
+            onChanged: (value) => setDialogState(() => mode = value ?? 'Soft'),
+            title: const Text('Soft reset'),
+            subtitle: const Text('Restore device settings while retaining factory-default behavior defined by the camera'),
+          ),
+          RadioListTile<String>(
+            contentPadding: EdgeInsets.zero,
+            value: 'Hard',
+            groupValue: mode,
+            onChanged: (value) => setDialogState(() => mode = value ?? 'Hard'),
+            title: const Text('Hard reset'),
+            subtitle: const Text('Request the camera’s hard factory-default mode; support varies by model'),
+          ),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(context, mode), child: const Text('Continue')),
+        ],
+      )),
+    );
+    if (selectedMode == null || !mounted) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Confirm destructive camera reset'),
+        content: Text(
+          'Send ONVIF SetSystemFactoryDefault ($selectedMode) to ${device.ipAddress}? '
+          'This may erase configuration, reset credentials, interrupt video and change the camera IP. '
+          'There is no automatic rollback. The camera must explicitly support and authorize this ONVIF operation.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Go back')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: const Color(0xFFC62836)),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Send reset request'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      final message = await discovery.factoryReset(device, factoryDefaultType: selectedMode);
+      await _record('Factory reset', device.ipAddress, 'Accepted', message);
+      _msg(message);
+    } on OnvifException catch (error) {
+      await _record('Factory reset', device.ipAddress, 'Failed', error.message);
+      _msg(error.message);
+    } catch (error) {
+      await _record('Factory reset', device.ipAddress, 'Failed', error.toString());
+      _msg('Factory reset request failed: $error');
+    }
   }
 
   Future<void> _staticIp(CameraDevice d) async {
@@ -859,6 +933,19 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
         )),
       ]),
       const SizedBox(height: 20),
+      _heading('Camera maintenance', 'Only verified ONVIF operations are exposed'),
+      const SizedBox(height: 8),
+      OutlinedButton.icon(
+        onPressed: () => unawaited(_factoryReset(device)),
+        icon: const Icon(Icons.restore, color: Color(0xFFC62836)),
+        label: const Text('Factory reset camera'),
+      ),
+      const Card(child: ListTile(
+        leading: Icon(Icons.info_outline, color: muted),
+        title: Text('Reboot is unavailable'),
+        subtitle: Text('Desktop main does not implement a verified reboot operation. Factory reset is available only through ONVIF SetSystemFactoryDefault when the camera supports and authorizes it.'),
+      )),
+      const SizedBox(height: 20),
       _heading('IPv4 network configuration', 'Camera-side settings reported by ONVIF'),
       const SizedBox(height: 8),
       _detail('Current IP', device.ipv4Address),
@@ -890,7 +977,8 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
         subtitle: Text('The desktop main branch only validates package metadata and SHA-256 candidates. Vendor signature verification, authorized transport and recovery are not implemented.'),
       )),
       const SizedBox(height: 8),
-      _cap('Reboot / factory reset', 'Not implemented', false),
+      _cap('Factory reset', 'ONVIF Soft/Hard request · camera support and authorization required', true),
+      _cap('Reboot', 'Not implemented', false),
       _cap('DHCP / DNS write configuration', 'Not implemented', false),
     ]);
   }
