@@ -1,0 +1,63 @@
+name: Mobile preview artifacts
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  android-preview:
+    name: Android debug APK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Install dependencies
+        run: flutter pub get
+      - name: Generate Android runner
+        run: bash tool/bootstrap_platforms.sh
+      - name: Build debug APK
+        run: flutter build apk --debug
+      - name: Upload Android preview APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: oxita-camera-ip-search-android-debug
+          path: build/app/outputs/flutter-apk/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
+
+  ios-simulator-preview:
+    name: iOS simulator app (unsigned)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Install dependencies
+        run: flutter pub get
+      - name: Generate iOS runner
+        run: bash tool/bootstrap_platforms.sh
+      - name: Build unsigned simulator app
+        run: flutter build ios --simulator --no-codesign --debug
+      - name: Archive simulator app
+        run: |
+          cd build/ios/iphonesimulator
+          ditto -c -k --sequesterRsrc --keepParent Runner.app oxita-camera-ip-search-ios-simulator.zip
+      - name: Upload iOS simulator preview
+        uses: actions/upload-artifact@v4
+        with:
+          name: oxita-camera-ip-search-ios-simulator-unsigned
+          path: build/ios/iphonesimulator/oxita-camera-ip-search-ios-simulator.zip
+          if-no-files-found: error
+          retention-days: 14
