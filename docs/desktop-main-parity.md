@@ -1,6 +1,6 @@
 # Desktop main → mobile parity
 
-**Desktop source of truth:** `Karishma6543/camera-ip-search` main, inspected at commit `2d91d61d76f1b8c8f9c1faff795f7b67cfadf4fc` (branding/release-status refresh, after main CI commit `47b99f2`).
+**Desktop source of truth:** `Karishma6543/camera-ip-search` main, inspected at commit `92884b3bbbaabdd52426f0cce2ffa6251e9e2bf9` (merged PR #13: Oxita desktop UI overhaul, sequential bulk static IPv4 and ONVIF factory reset).
 
 This matrix intentionally excludes desktop PR #10 because it is still an unmerged pull request, not part of desktop main.
 
@@ -13,6 +13,8 @@ This matrix intentionally excludes desktop PR #10 because it is still an unmerge
 | Interface selection, bounded subnet scan, reachability and cancellation | Flutter network tools | Implemented in code; OS/VLAN/firewall behavior needs hardware testing |
 | SQLite inventory, operation history, diagnostics, redaction and rotating logs | Existing mobile services | Implemented in code; privacy/security review remains open |
 | Guarded single-camera static IPv4 | ONVIF read/validation/apply/reconnect path | Implemented in code; model/firmware hardware tests required |
+| Sequential bulk static IPv4 | Mobile range planner and per-device preflight | Planning is implemented; execution remains blocked because Android's positive-only probe cannot prove an address is free and iOS has no validated probe. Unknown blocks all writes |
+| ONVIF factory reset (`SetSystemFactoryDefault`) | Mobile Soft/Hard request with two-step confirmation and operation history | Implemented in code; camera support/authentication and physical-device validation required |
 | Sequential batch operation preflight and runner | Dart preflight/runner; Tools exposes sequential read-only ONVIF refresh | Implemented for read-only refresh; no batch writes are enabled |
 | Batch identity/address duplicate checks and adapter capability gating | Dart batch preflight | Implemented; unsupported operations fail closed |
 | IPv4 assignment range planner | Dart dry-run planner and selected-device mapping | Implemented; bounded to 65,536 addresses and max 256 devices |
@@ -45,9 +47,9 @@ This matrix intentionally excludes desktop PR #10 because it is still an unmerge
 A passing unit test or Android build is not proof of camera interoperability. This branch is a pre-production parity implementation, not production certification.
 
 
-## Latest desktop main update (PR #11)
+## Latest desktop main update (PR #13)
 
-Desktop main now includes the official Oxita logo asset, SQLite online backup/restore, retained pre-restore recovery snapshots, backup corruption/integrity tests, and additional security redaction coverage. Mobile parity now includes:
+Desktop main includes the official Oxita logo asset, SQLite online backup/restore, retained pre-restore recovery snapshots, backup corruption/integrity tests, additional security redaction coverage, sequential bulk static IPv4 assignment, and ONVIF Soft/Hard factory reset. Mobile parity now includes:
 - The same official Oxita logo bundled as a Flutter asset and used in the app header.
 - Consistent SQLite backup after WAL checkpoint.
 - Backup validation before restore, pre-restore recovery snapshot retention, post-restore integrity checks and rollback to the snapshot on failure.
@@ -55,4 +57,4 @@ Desktop main now includes the official Oxita logo asset, SQLite online backup/re
 
 The mobile backup is for the mobile app's SQLite schema. It is not a direct import/export format for the desktop Qt database.
 
-Remaining platform/release gaps are physical-device discovery and configuration evidence, iOS multicast entitlement, Android/iOS native UI smoke tests, signed mobile builds, and release packaging. Desktop itself still lacks vendor-specific CP Plus/Hikvision/Prama adapters, activation, firmware flashing, reboot, NVR channel management and bulk image settings; mobile must keep these unavailable until the desktop has verified implementations and protocols.
+Bulk IPv4 mobile execution remains intentionally blocked until a platform-specific conflict probe can prove each target address clear immediately before each write. Android's current positive-only probe treats no response as Unknown; iOS has no validated backend. Desktop itself still lacks vendor-specific CP Plus/Hikvision/Prama adapters, activation, firmware flashing, reboot, NVR channel management and bulk image settings. Physical-device discovery/configuration, iOS multicast entitlement, Android/iOS native UI smoke tests, signed mobile builds and release packaging remain release gates.
