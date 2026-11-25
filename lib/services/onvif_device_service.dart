@@ -183,6 +183,24 @@ class OnvifDeviceService {
     );
   }
 
+  Future<String> factoryReset(CameraDevice device, {required String factoryDefaultType}) async {
+    final mode = factoryDefaultType.trim();
+    if (mode != 'Soft' && mode != 'Hard') {
+      throw const OnvifException('Choose a supported ONVIF factory-default mode.');
+    }
+    if (!isSafeEndpoint(device) ||
+        !(device.discoverySources.any((source) => source.startsWith('ONVIF')) ||
+          device.onvifEndpoint.isNotEmpty)) {
+      throw const OnvifException('Factory reset requires a verified ONVIF device-service endpoint.');
+    }
+    await _post(
+      device,
+      'SetSystemFactoryDefault',
+      body: '<tds:FactoryDefault>${_xml(mode)}</tds:FactoryDefault>',
+    );
+    return 'The camera accepted the ONVIF $mode factory-default request. It may reboot, erase settings and change its IP address. Rediscover the camera before further configuration.';
+  }
+
   Future<OnvifWriteResult> applyStaticIpv4(
     CameraDevice device, {
     required String address,
