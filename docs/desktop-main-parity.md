@@ -58,3 +58,20 @@ Desktop main includes the official Oxita logo asset, SQLite online backup/restor
 The mobile backup is for the mobile app's SQLite schema. It is not a direct import/export format for the desktop Qt database.
 
 Bulk IPv4 mobile execution remains intentionally blocked until a platform-specific conflict probe can prove each target address clear immediately before each write. Android's current positive-only probe treats no response as Unknown; iOS has no validated backend. Desktop itself still lacks vendor-specific CP Plus/Hikvision/Prama adapters, activation, firmware flashing, reboot, NVR channel management and bulk image settings. Physical-device discovery/configuration, iOS multicast entitlement, Android/iOS native UI smoke tests, signed mobile builds and release packaging remain release gates.
+
+
+## Latest desktop main update (PR #14, commit 514e94c4ef712f2a94e4d8ff7dea2901c24e0824)
+
+- Added SSDP/UPnP M-SEARCH discovery alongside ONVIF and Oxita Contract B. SSDP response LOCATION is untrusted metadata and is never fetched.
+- Added evidence-based device classification: Camera, NVR, Router, Switch, Printer, Computer and Unknown, with Verified/High/Probable/Unverified confidence.
+- Expanded TCP subnet scan ports to common camera, management, printing and computer services.
+- Full scans are limited to 4,096 hosts; larger networks use a 256-address window around the selected interface address.
+- Discovery supports all active IPv4 interfaces or one selected interface; subnet scanning remains tied to one explicitly selected interface.
+- Static-IP preview and apply now reject addresses already used by local interfaces or another inventory device, gateway or DNS entry.
+
+Mobile parity implementation notes:
+- SSDP is parsed locally with a 16 KiB response cap and sender-IP binding. LOCATION is never dereferenced.
+- Classification is a triage aid, not proof of device compatibility. Port-derived classifications are Probable; generic ports remain Unknown.
+- iOS multicast entitlement and physical Android/iOS multicast delivery still require validation.
+- TCP scan is TCP-only; UDP-only devices may not appear. Discovery is link-local and does not cross VLANs or routers.
+- Static-IP collision checks use current local-interface and inventory evidence; they are not a live ARP duplicate-address probe. Existing fail-closed assignment preflight remains in force.
