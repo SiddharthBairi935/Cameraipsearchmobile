@@ -431,21 +431,25 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
         content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('Target: ${device.ipAddress} · ${device.manufacturer} · ${device.model}'),
           const SizedBox(height: 12),
-          RadioListTile<String>(
-            contentPadding: EdgeInsets.zero,
-            value: 'Soft',
+          RadioGroup<String>(
             groupValue: mode,
             onChanged: (value) => setDialogState(() => mode = value ?? 'Soft'),
-            title: const Text('Soft reset'),
-            subtitle: const Text('Restore device settings while retaining factory-default behavior defined by the camera'),
-          ),
-          RadioListTile<String>(
-            contentPadding: EdgeInsets.zero,
-            value: 'Hard',
-            groupValue: mode,
-            onChanged: (value) => setDialogState(() => mode = value ?? 'Hard'),
-            title: const Text('Hard reset'),
-            subtitle: const Text('Request the camera’s hard factory-default mode; support varies by model'),
+            child: Column(
+              children: const [
+                RadioListTile<String>(
+                  contentPadding: EdgeInsets.zero,
+                  value: 'Soft',
+                  title: Text('Soft reset'),
+                  subtitle: Text('Restore device settings while retaining factory-default behavior defined by the camera'),
+                ),
+                RadioListTile<String>(
+                  contentPadding: EdgeInsets.zero,
+                  value: 'Hard',
+                  title: Text('Hard reset'),
+                  subtitle: Text('Request the camera’s hard factory-default mode; support varies by model'),
+                ),
+              ],
+            ),
           ),
         ]),
         actions: [
