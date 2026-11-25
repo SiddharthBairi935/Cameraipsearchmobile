@@ -8,6 +8,7 @@ import 'package:xml/xml.dart';
 
 import '../models/camera_device.dart';
 import 'onvif_device_service.dart';
+import 'ssdp_discovery_parser.dart';
 
 class DeviceDiscoveryService extends ChangeNotifier {
   DeviceDiscoveryService({OnvifDeviceService? onvifService, this.onOperation})
@@ -25,6 +26,8 @@ class DeviceDiscoveryService extends ChangeNotifier {
   String get selectedInterfaceName => _selectedInterfaceName;
   static const projectPort = 9988;
   static const onvifPort = 3702;
+  static const ssdpPort = 1900;
+  static final InternetAddress ssdpGroup = InternetAddress('239.255.255.250');
   static final InternetAddress onvifGroup = InternetAddress('239.255.255.250');
 
   final Map<String, CameraDevice> _devices = {};
@@ -123,7 +126,7 @@ class DeviceDiscoveryService extends ChangeNotifier {
         return;
       }
       final interfaceCount = _sockets.length;
-      _setStatus('Sending ONVIF and project-camera probes on $interfaceCount interface address(es)…');
+      _setStatus('Sending ONVIF, Oxita and SSDP/UPnP probes on $interfaceCount interface address(es)…');
       _timeout = Timer(const Duration(seconds: 6), () { if (generation == _discoveryGeneration) _finishDiscovery(); });
     } on SocketException catch (error) {
       _closeSockets();
@@ -175,6 +178,11 @@ class DeviceDiscoveryService extends ChangeNotifier {
       } catch (error) {
         _setStatus('Oxita UDP probe unavailable on ${interface.name}: $error');
       }
+      try {
+        _sendSsdpProbe(openedSocket);
+      } catch (error) {
+        _setStatus('SSDP/UPnP probe unavailable on ${interface.name}: $error');
+      }
     } on SocketException catch (error) {
       if (socket != null) { _sockets.remove(socket); socket.close(); }
       _setStatus('Could not bind ${interface.name}: ${error.message}');
@@ -209,10 +217,22 @@ class DeviceDiscoveryService extends ChangeNotifier {
     socket.send(utf8.encode(payload), InternetAddress('255.255.255.255'), projectPort);
   }
 
+  void _sendSsdpProbe(RawDatagramSocket socket) {
+    const probe = 'M-SEARCH * HTTP/1.1\\r\\n'
+        'HOST: 239.255.255.250:1900\\r\\n'
+        'MAN: \\"ssdp:discover\\"\\r\\n'
+        'MX: 2\\r\\n'
+        'ST: ssdp:all\\r\\n\\r\\n';
+    socket.send(ascii.encode(probe), ssdpGroup, ssdpPort);
+  }
+
   void _handleDatagram(Datagram datagram, int expectedSequence, String interfaceName) {
     if (datagram.data.length > 65507) return;
     final payload = utf8.decode(datagram.data, allowMalformed: true);
-    if (payload.contains('CAM_DISCOVER')) {
+    if (payload.length <= 16 * 1024 && payload.toUpperCase().startsWith('HTTP/1.') ) {
+      final device = SsdpDiscoveryParser.parseResponse(datagram.data, datagram.address, interfaceName);
+      if (device != null) _merge(device);
+    } else if (payload.contains('CAM_DISCOVER')) {
       final device = parseProjectResponse(payload, expectedSequence, datagram.address, interfaceName);
       if (device != null) _merge(device);
     } else if (payload.contains('ProbeMatch')) {
@@ -492,7 +512,7 @@ class DeviceDiscoveryService extends ChangeNotifier {
     ));
   }
 
-  Future<void> scanSubnet(InternetAddress localAddress, InternetAddress mask, {String interfaceName = '', void Function(int completed, int total, int candidates)? onProgress}) async {
+  Future<void> scanSubnet(InternetAddress localAddress, InternetAddress mask, {String interfaceName = '', bool fullSubnet = false, void Function(int completed, int total, int candidates)? onProgress}) async {
     if (_disposed || _isSubnetScanning) return;
     if (!await _ensureLocalNetworkAccess()) {
       if (!_disposed) _setStatus('Local network permission is required to scan this subnet.');
@@ -524,16 +544,20 @@ class DeviceDiscoveryService extends ChangeNotifier {
     if (last < first) throw const FormatException('Invalid subnet.');
     _isSubnetScanning = true;
     final hostCount = last - first + 1;
-    final end = hostCount <= 256 ? last : (own + 128 < last ? own + 128 : last);
-    final start = hostCount <= 256 ? first : (own - 127 > first ? own - 127 : first);
+    if (hostCount > 4096 && fullSubnet) {
+      throw const FormatException('Full subnet scans are limited to 4,096 hosts. Use the 256-address window on larger networks.');
+    }
+    final scanAll = hostCount <= 4096;
+    final end = scanAll ? last : (own + 128 < last ? own + 128 : last);
+    final start = scanAll ? first : (own - 127 > first ? own - 127 : first);
     final hosts = <int>[];
     for (var host = start; host <= end; host++) {
       if (host != own) hosts.add(host);
     }
-    const ports = [80, 443, 554, 8000, 8080, 8899, 34567];
+    const ports = [22, 23, 53, 80, 135, 139, 443, 445, 515, 554, 631, 1900, 2869, 3389, 5000, 5357, 7547, 8000, 8080, 8443, 8899, 9100, 34567];
     var completed = 0;
     var candidates = 0;
-    _setStatus('Scanning a bounded range of ${hosts.length} local IPv4 hosts…');
+    _setStatus(scanAll ? 'Scanning all $hostCount usable local IPv4 hosts…' : 'Scanning a 256-address window (${hosts.length} hosts) on a larger subnet…');
     final tasks = <Future<void>>[];
     final semaphore = _AsyncSemaphore(24);
     for (final host in hosts) {
@@ -592,7 +616,7 @@ class DeviceDiscoveryService extends ChangeNotifier {
   }
 
   Future<String> _checkDevice(CameraDevice device) async {
-    const ports = [80, 443, 554, 8000, 8080, 8899, 34567];
+    const ports = [22, 23, 53, 80, 135, 139, 443, 445, 515, 554, 631, 1900, 2869, 3389, 5000, 5357, 7547, 8000, 8080, 8443, 8899, 9100, 34567];
     for (final port in {...device.openPorts, ...ports}) {
       try {
         final socket = await Socket.connect(device.ipAddress, port, timeout: const Duration(milliseconds: 550));
