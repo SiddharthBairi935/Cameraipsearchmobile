@@ -1,67 +1,48 @@
 # Oxita Camera IP Search Mobile
 
-Flutter/Dart Android and iOS companion to the desktop [Camera IP Search](https://github.com/Karishma6543/camera-ip-search).
+Flutter/Dart Android and iOS companion to the [Oxita Camera IP Search desktop application](https://github.com/Karishma6543/camera-ip-search).
 
-The mobile app translates the desktop release-candidate workflows into mobile navigation, responsive cards, bottom sheets and confirmation dialogs. It is not a Qt UI copy.
+The mobile app uses native mobile navigation and local-first networking. Discovery, inventory, and supported camera operations run on the phone against the user's local network. There is no hosted backend or cloud service required for local discovery.
 
 ## Desktop source of truth
 
-The current parity target is the latest merged desktop `main`:
-https://github.com/Karishma6543/camera-ip-search
+Mobile parity is tracked against the latest merged desktop `main`. The latest inspected desktop commit is `c1f6c6db74f4dd6a80e6e03667bcc72a2a60a749` (PR #15, 25 November 2026), following PR #14's network-discovery and evidence-based inventory update.
 
-Desktop main inspected at commit `4b3092ff58cb2fc9ee1dd5a0b9e4d91d29d45915`, including merged PR #11 (inventory backup/restore, official Oxita logo, security-redaction improvements and UI acceptance coverage). Mobile changes are maintained in PR #4 until verified and merged.
+The desktop app is C++20 / Qt 6 with local SQLite storage. The mobile app is a separate Flutter/Dart implementation; desktop Qt code and UI are not reused.
 
-## Ported desktop capabilities
+## Implemented mobile capabilities
 
-- ONVIF WS-Discovery and Oxita Contract B UDP discovery (port 9988).
-- Selectable active IPv4 interface for discovery.
-- ONVIF XAddr validation: HTTP(S), same responding host, no user info, query or fragment.
-- Project response validation: magic, version, command, sequence, field types and sender-IP binding; supports the explicit unconfigured-camera 0.0.0.0 sender case.
-- Device identity matching using MAC, ONVIF endpoint, serial + known manufacturer, and guarded IP fallback; conflicting MAC addresses are not merged.
-- Candidate scan observations cannot overwrite verified device identity or IP details.
-- ONVIF GetDeviceInformation, GetCapabilities, GetNetworkInterfaces and GetDNS enrichment.
-- Select the ONVIF interface whose active IPv4 address matches the discovered camera before enabling static-IP writes.
-- Bounded opt-in TCP subnet scan (maximum 256 IPv4 hosts, with a window around the selected host on larger networks), common camera ports, candidate provenance, progress and cancellation.
-- TCP reachability checks with per-device timestamps, multi-select priority and cancellation.
-- Manual IP address/hostname inventory entry, labels, search, manufacturer/status filters and device detail profile.
-- Guarded ONVIF static IPv4 write: local validation, explicit confirmation, SOAP response validation, new-IP verification and separate gateway result handling.
-- Official Oxita logo bundled for offline in-app branding.
-- Local SQLite inventory with pre-migration `PRAGMA quick_check`, schema migration, persistent Operation History (latest 1,000; latest 250 displayed), CSV export/share, app data path information and session-only ONVIF HTTP Basic/Digest challenge credentials.
-- Rotating diagnostic logs (2 MiB active file, three archives), best-effort redaction for usernames, key/value secrets, Basic/Bearer/Digest authorization, URL user-info and namespaced XML secret elements.
-- SQLite inventory backup and restore: checkpointed backup, integrity-checked restore, pre-restore recovery snapshot and rollback on restore failure. Backup files are specific to the mobile inventory schema and are not a desktop-database interchange format.
-- User-confirmed diagnostic support bundle with OS/app/runtime details, IPv4 interface summary, recent operation history and redacted logs; inventory database and ONVIF interface tokens are excluded. The user can inspect the text before sharing.
-- Deterministic mobile test fixtures matching the desktop simulator's Contract B and limited ONVIF response scenarios, including malformed JSON, wrong sequence, invalid port, advertised-IP mismatch, missing MAC, unsafe/multiple XAddrs.
-- Discovery, subnet scan and reachability completion/cancellation outcomes are recorded; active scans are cancelled when the app backgrounds.
-- Manual inventory entry accepts a valid IP address or hostname, matching the desktop workflow.
+- ONVIF WS-Discovery and Oxita Contract B UDP discovery.
+- SSDP/UPnP M-SEARCH parsing with bounded response size, sender-IP binding, and no fetching of untrusted LOCATION URLs.
+- Evidence-based device classification (Camera, NVR, Router, Switch, Printer, Computer, Unknown) with confidence labels.
+- Selectable active IPv4 interfaces, subnet scanning, TCP reachability checks, progress and cancellation.
+- Full scan for subnets up to 4,096 hosts; a 256-address window around the selected interface for larger subnets.
+- ONVIF device-information/capability/network-interface enrichment.
+- Local SQLite inventory, search and filters, operation history, CSV export, backup/restore and diagnostics.
+- Guarded ONVIF static-IPv4 workflow with validation and confirmation. Platform conflict preflight remains fail-closed; unknown results block writes.
+- Mobile-native navigation, responsive layouts, dialogs and confirmation flows.
 
-## Deliberately unavailable (matches desktop PR #4)
+Ported classification and discovery are triage features, not vendor certification. TCP-only scans can miss UDP-only devices. Link-local discovery does not cross routers or VLANs.
 
-- CP Plus, Hikvision and Prama proprietary adapters.
-- Project-camera activation or configuration commands; Contract B currently defines discovery only.
-- Firmware upload/update, reboot, NVR channel management and bulk image configuration.
-- DHCP toggle and DNS write configuration.
-- ONVIF HTTP Basic and Digest (MD5 / MD5-sess with qop=auth) challenge authentication is supported with session-only credentials. Digest SHA-256, qop=auth-int, ONVIF WS-Security and secure OS credential-vault integration are not implemented.
-- Any write operation without a verified adapter contract and recovery path.
+## Security and credential handling
 
-Unavailable desktop features are represented as unavailable in the mobile app, not as fake active controls.
+- Camera credentials are session-only and are not intentionally persisted.
+- No Android Keystore or iOS Keychain credential-vault provider is implemented.
+- No plaintext fallback is permitted if a future secure-vault provider is unavailable.
+- Diagnostic redaction is best-effort; users must inspect support bundles before sharing.
+- See [mobile security and privacy review](docs/security-and-privacy-review.md) and [credential-storage design](docs/credential-storage-mobile.md).
 
-## Platform requirements
+## Platform requirements and limitations
 
 ### Android
-Run `bash tool/bootstrap_platforms.sh` to generate standard Android/iOS runners and the Android local-network permission bridge. The bridge requests `ACCESS_LOCAL_NETWORK` when running on Android 17/API 37 and manages the Wi-Fi multicast lock. Confirm targetSdk and test discovery on physical Android devices and different Wi-Fi access points.
+The bootstrap script generates the Android runner and local-network permission bridge. It requests Android 17/API 37 local-network permission when applicable and manages a Wi-Fi multicast lock. Physical-device testing is still required across Android versions, phone vendors, Wi-Fi access points, Ethernet adapters and VLAN/firewall configurations.
 
 ### iOS
-The bootstrap script adds `NSLocalNetworkUsageDescription`. ONVIF UDP multicast/broadcast also requires Apple's multicast networking entitlement and an authorized provisioning profile. Request the entitlement from Apple and validate an entitled physical-device build before claiming iOS discovery parity. Without it, iOS may not receive ONVIF multicast replies.
-
-## Security and testing documentation
-
-- [Security and privacy review](docs/security-and-privacy-review.md)
-- [Simulator and integration testing](docs/simulator-and-integration-testing.md)
-- [Desktop-to-mobile parity matrix](docs/parity-matrix.md)
+The bootstrap script adds the local-network usage description. ONVIF/SSDP multicast discovery requires Apple's multicast networking entitlement and a correctly provisioned build. Entitlement approval and physical-device validation remain release gates.
 
 ## Setup
 
-Requirements: Flutter stable, Android Studio for Android, Xcode/macOS for iOS.
+Requirements: Flutter stable, Android Studio for Android, and macOS/Xcode for iOS.
 
 ```bash
 bash tool/bootstrap_platforms.sh
@@ -71,20 +52,16 @@ flutter test
 flutter run
 ```
 
-## Desktop-main parity notes
+## CI and artifacts
 
-The mobile UI uses native mobile navigation and responsive layouts rather than copying desktop Qt screens pixel-for-pixel. Desktop inventory backup/restore is represented by a mobile SQLite backup workflow. Unsupported desktop operations remain visibly unavailable; no vendor commands are invented.
+Flutter CI runs dependency resolution, static analysis, tests, Android/iOS runner generation and an Android debug APK build. The debug APK is uploaded as a short-lived CI artifact for manual device testing; it is not a signed production release.
+
+The manual/tag-triggered mobile artifact workflow creates an Android debug APK and an unsigned iOS simulator app bundle for evaluation. These are preview artifacts only—not Play Store/App Store submissions, signed releases, or production installers. See [mobile release engineering](docs/release-engineering-mobile.md).
+
+The desktop PR #15 security workflow also introduced CodeQL and dependency-review gates. CodeQL does not currently analyze Dart source; mobile CI therefore relies on Flutter analysis/tests, dependency automation/review and explicit platform-security review rather than claiming Dart CodeQL coverage.
 
 ## Validation status
 
-Automated Dart tests cover protocol fixtures, redaction, diagnostic log rotation, SQLite integrity checks, version-one schema migration, retention and damaged-database preservation. Flutter CI runs analyze, tests, platform-runner generation and an Android debug APK build. The API 36 plugin compileSdk compatibility patch is applied by the platform bootstrap script. A green workflow is not proof of camera interoperability. Hardware validation must record exact camera model, hardware revision, firmware, network topology and the operations tested.
+Automated Flutter analysis/tests and Android debug builds are CI-validated on the exact commit shown in the Actions run. Green CI is not proof of camera interoperability. Physical Android/iOS discovery, iOS multicast entitlement, real-camera ONVIF behavior, network-changing operations, credential-vault implementation, signing and release certification remain separate gates.
 
-Desktop PR #4 itself is still a draft release candidate and is **not production ready**: its validation notes say cross-platform build/test, real-camera checks, security review and release packaging remain open. Mobile parity must preserve those same evidence levels rather than overstate support.
-
-
-## Desktop PR #5 parity boundaries
-
-- Operation History and diagnostics are implemented with mobile-native presentation and local file sharing.
-- The desktop Python simulator is not embedded as a background server in the mobile app. Mobile uses deterministic Dart wire fixtures and loopback ONVIF test servers in automated tests; this avoids requiring a rooted phone or binding privileged discovery ports in production.
-- Android native interface diagnostics report MTU and link state; iOS reports link state while MTU is not exposed by the current iOS bridge. Both require physical-device validation. iOS multicast entitlement approval remains an external release gate.
-- Log redaction is best-effort and does not guarantee that all sensitive data is removed. Inspect support bundles before sharing.
+See [desktop-to-mobile parity](docs/desktop-main-parity.md), [security review](docs/security-and-privacy-review.md), and [mobile release engineering](docs/release-engineering-mobile.md).
