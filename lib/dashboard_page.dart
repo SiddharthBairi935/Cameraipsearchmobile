@@ -30,7 +30,7 @@ class _FirmwareDigestSink implements Sink<Digest> {
   void close() {}
 }
 
-const red = Color(0xFFC92D3B), canvas = Color(0xFFF3F4F6), surface = Color(0xFFFFFFFF), muted = Color(0xFF7B828E);
+const red = Color(0xFFC62836), canvas = Color(0xFF171717), surface = Color(0xFF292929), muted = Color(0xFFBDBDBD);
 
 class CameraIpSearchApp extends StatelessWidget {
   const CameraIpSearchApp({super.key});
@@ -39,30 +39,30 @@ class CameraIpSearchApp extends StatelessWidget {
     title: 'Oxita Camera Device Manager', debugShowCheckedModeBanner: false,
     theme: ThemeData(
       useMaterial3: true,
-      brightness: Brightness.light,
+      brightness: Brightness.dark,
       scaffoldBackgroundColor: canvas,
-      colorScheme: ColorScheme.fromSeed(seedColor: red, brightness: Brightness.light, surface: surface),
-      appBarTheme: AppBarTheme(backgroundColor: surface, foregroundColor: Color(0xFF252A32), elevation: 0, centerTitle: false),
+      colorScheme: ColorScheme.fromSeed(seedColor: red, brightness: Brightness.dark, surface: surface),
+      appBarTheme: AppBarTheme(backgroundColor: surface, foregroundColor: Color(0xFFF4F4F4), elevation: 0, centerTitle: false),
       cardTheme: CardThemeData(
         color: surface,
         elevation: 0,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(14),
-          side: const BorderSide(color: Color(0xFFE5E8ED)),
+          side: const BorderSide(color: Color(0xFF454545)),
         ),
       ),
       navigationBarTheme: NavigationBarThemeData(
         backgroundColor: surface,
-        indicatorColor: Color(0xFFFCEBED),
+        indicatorColor: Color(0xFF5A252B),
         labelTextStyle: WidgetStatePropertyAll(TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: surface,
-        hintStyle: const TextStyle(color: Color(0xFF89909B)),
-        labelStyle: const TextStyle(color: Color(0xFF69717D)),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFDCE1E8))),
-        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFDCE1E8))),
+        fillColor: const Color(0xFF1D1D1D),
+        hintStyle: const TextStyle(color: Color(0xFFBDBDBD)),
+        labelStyle: const TextStyle(color: Color(0xFFBDBDBD)),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(9), borderSide: const BorderSide(color: Color(0xFF626262))),
+        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(9), borderSide: const BorderSide(color: Color(0xFF626262))),
         focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: red, width: 1.4)),
       ),
     ),
@@ -86,7 +86,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
   final selected = <String>{};
   List<NetworkInterface> interfaces = [];
   Map<String, dynamic>? nativeInterfaceDetails;
-  int tab = 0;
+  int tab = 1;
   bool loading = true, checking = false, batchRunning = false;
   String batchProgress = '';
   String databaseIntegrity = 'Checking…';
@@ -247,8 +247,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
 
   Future<void> _refreshDevice(CameraDevice device) async {
     try {
-      await discovery.refreshDeviceInfo(device);
-    } catch (error) {
+      await discovery.refreshDeviceInfo(device);    } catch (error) {
       _msg('Device refresh failed: $error');
     }
   }
@@ -338,15 +337,16 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
   }
 
   Future<void> _export() async {
+    final exportDevices = List<CameraDevice>.unmodifiable(discovery.devices);
     final rows = <List<String>>[
       ['IP ADDRESS','DESCRIPTION','MANUFACTURER','MODEL','MAC','FIRMWARE','STATUS','SOURCE','SERIAL','HARDWARE ID','REACHABILITY','INTERFACES','CAPABILITIES','OPEN PORTS','CAMERA IPV4','MASK','GATEWAY','DNS','DHCP','ONVIF ENDPOINT','SERVICE URL'],
-      ...visible.map((d)=>[d.ipAddress,d.userLabel,d.manufacturer,d.model,d.macAddress,d.firmwareVersion,d.activationState,d.discoverySources.join('; '),d.serialNumber,d.hardwareId,d.reachabilityStatus,d.networkSummary,d.capabilities.join('; '),d.openPorts.join('; '),d.ipv4Address,d.ipv4SubnetMask,d.ipv4Gateway,d.ipv4DnsServer,d.ipv4DhcpEnabled.toString(),d.onvifEndpoint,d.deviceServiceUrl])
+      ...exportDevices.map((d)=>[d.ipAddress,d.userLabel,d.manufacturer,d.model,d.macAddress,d.firmwareVersion,d.activationState,d.discoverySources.join('; '),d.serialNumber,d.hardwareId,d.reachabilityStatus,d.networkSummary,d.capabilities.join('; '),d.openPorts.join('; '),d.ipv4Address,d.ipv4SubnetMask,d.ipv4Gateway,d.ipv4DnsServer,d.ipv4DhcpEnabled.toString(),d.onvifEndpoint,d.deviceServiceUrl])
     ];
     String field(String v)=>'"${v.replaceAll('"','""')}"';
     final dir=await getTemporaryDirectory(), file=File('${dir.path}/oxita-camera-inventory.csv');
     await file.writeAsString('\uFEFF${rows.map((r)=>r.map(field).join(',')).join('\r\n')}\r\n',flush:true);
     await Share.shareXFiles([XFile(file.path)],text:'Oxita camera inventory');
-    await _record('Inventory export', 'oxita-camera-inventory.csv', 'Prepared', '${visible.length} filtered device row(s) exported.');
+    await _record('Inventory export', 'oxita-camera-inventory.csv', 'Prepared', '${exportDevices.length} device row(s) from the complete inventory exported.');
   }
 
   Future<void> _previewStaticIpv4(CameraDevice d) async {
@@ -496,8 +496,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
             child: const Text('Send reset request'),
           ),
         ],
-      ),
-    );
+      ),    );
     if (confirmed != true || !mounted) return;
     try {
       final message = await discovery.factoryReset(device, factoryDefaultType: selectedMode);
@@ -642,13 +641,17 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
       _msg('Select at least one camera in Devices before creating an assignment plan.');
       return;
     }
+    if (targets.length > 256) {
+      _msg('Bulk IPv4 is limited to 256 cameras per operation.');
+      return;
+    }
     final start = TextEditingController();
     final end = TextEditingController();
     final mask = TextEditingController(text: '255.255.255.0');
     final values = await showDialog<List<String>>(context: context, builder: (context) => AlertDialog(
       title: const Text('Plan multi-camera IPv4 addresses'),
       content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Text('Dry-run plan for ${targets.length} selected device(s). No camera requests will be sent.', style: const TextStyle(color: muted, fontSize: 12)),
+        Text('Sequential operation for ${targets.length} selected camera(s). Each camera is checked immediately before its own write.', style: const TextStyle(color: muted, fontSize: 12)),
         TextField(controller: start, decoration: const InputDecoration(labelText: 'Range start')),
         TextField(controller: end, decoration: const InputDecoration(labelText: 'Range end')),
         TextField(controller: mask, decoration: const InputDecoration(labelText: 'Subnet mask')),
@@ -661,17 +664,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
     start.dispose(); end.dispose(); mask.dispose();
     if (values == null || !mounted) return;
     try {
-      final reserved = <String>{};
-      for (final device in discovery.devices) {
-        if (device.ipAddress.isNotEmpty) reserved.add(device.ipAddress);
-        if (device.ipv4Gateway.isNotEmpty) reserved.add(device.ipv4Gateway);
-        if (device.ipv4DnsServer.isNotEmpty) reserved.add(device.ipv4DnsServer);
-      }
-      for (final network in interfaces) {
-        for (final address in network.addresses) {
-          if (address.type == InternetAddressType.IPv4) reserved.add(address.address);
-        }
-      }
+      final reserved = _reservedIpv4Addresses();
       final plan = IpAssignmentPlanner.build(
         startAddress: values[0], endAddress: values[1], subnetMask: values[2],
         selectedDevices: targets.map((d) => IpAssignmentTarget(deviceId: d.id, currentAddress: d.ipAddress)).toList(),
@@ -681,25 +674,132 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
         plan: plan.targets, inventoryAddresses: reserved, probe: _probeIpv4Conflict,
       );
       final ready = preflight.where((r) => r.state == IpAssignmentPreflightState.ready).length;
+      final allReady = ready == plan.targets.length;
       final report = preflight.map((r) =>
         '${r.target.currentAddress} → ${r.target.proposedAddress}\n${r.state.name}: ${r.message}').join('\n\n');
       await _record('IP assignment plan', 'Selected devices', 'Previewed',
-          '${plan.targets.length} proposed address(es); $ready passed live preflight. No changes sent.');
+          '${plan.targets.length} proposed address(es); $ready passed preflight. No changes sent.');
       if (!mounted) return;
-      await showDialog<void>(context: context, builder: (context) => AlertDialog(
-        title: const Text('Assignment plan · dry run'),
+      final apply = await showDialog<bool>(context: context, builder: (context) => AlertDialog(
+        title: const Text('Assignment plan · preflight'),
         content: SizedBox(width: 560, child: SingleChildScrollView(child: SelectableText(
-          '$report\n\nNo assignments were applied. This mobile build has no validated live ARP/DAD backend on the current platform; Unknown blocks assignment. A future apply workflow must repeat conflict checks immediately before each write.',
+          '$report\n\n${allReady
+            ? 'All targets passed the current preflight. The app will repeat the address check immediately before each sequential camera write. There is no automatic rollback if a camera disconnects.'
+            : 'Execution is blocked. Every target must have a verified clear result. An unknown/no-response result is not proof that an address is free.'}',
           style: const TextStyle(fontSize: 12, height: 1.45),
         ))),
-        actions: [FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Close'))],
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Close')),
+          if (allReady)
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: red),
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Confirm sequential assignment'),
+            ),
+        ],
       ));
+      if (apply != true || !mounted) return;
+      await _applyIpAssignmentPlan(plan, targets);
     } on FormatException catch (error) {
       await _record('IP assignment plan', 'Selected devices', 'Failed', error.message);
       _msg(error.message);
     } catch (error) {
       await _record('IP assignment plan', 'Selected devices', 'Failed', error.toString());
       _msg('Could not build assignment plan: $error');
+    }
+  }
+
+  Set<String> _reservedIpv4Addresses() {
+    final reserved = <String>{};
+    for (final device in discovery.devices) {
+      if (device.ipAddress.isNotEmpty) reserved.add(device.ipAddress);
+      if (device.ipv4Gateway.isNotEmpty) reserved.add(device.ipv4Gateway);
+      if (device.ipv4DnsServer.isNotEmpty) reserved.add(device.ipv4DnsServer);
+    }
+    for (final network in interfaces) {
+      for (final address in network.addresses) {
+        if (address.type == InternetAddressType.IPv4) reserved.add(address.address);
+      }
+    }
+    return reserved;
+  }
+
+  Future<void> _applyIpAssignmentPlan(IpAssignmentPlan plan, List<CameraDevice> originalTargets) async {
+    var succeeded = 0;
+    var blocked = 0;
+    var failed = 0;
+    for (var index = 0; index < plan.targets.length; index++) {
+      final target = plan.targets[index];
+      CameraDevice? device;
+      for (final candidate in discovery.devices) {
+        if (candidate.id == target.deviceId) {
+          device = candidate;
+          break;
+        }
+      }
+      if (device == null) {
+        for (final candidate in originalTargets) {
+          if (candidate.id == target.deviceId) {
+            device = candidate;
+            break;
+          }
+        }
+      }
+      final targetDevice = device;      if (targetDevice == null || !targetDevice.ipv4ConfigurationKnown || targetDevice.networkInterfaceToken.isEmpty) {
+        blocked++;
+        await _record('Bulk static IPv4', target.currentAddress, 'Blocked',
+          'A current device record with a verified ONVIF interface token is required.');
+        continue;
+      }
+      if (mounted) {
+        setState(() {
+          batchRunning = true;
+          batchProgress = 'Rechecking ${target.proposedAddress} · ${index + 1}/${plan.targets.length}';
+        });
+      }
+      final latestReserved = _reservedIpv4Addresses()
+        ..remove(targetDevice.ipAddress);
+      final check = await const IpAssignmentPreflight().evaluate(
+        plan: [target],
+        inventoryAddresses: latestReserved,
+        probe: _probeIpv4Conflict,
+      );
+      if (check.single.state != IpAssignmentPreflightState.ready) {
+        blocked++;
+        await _record('Bulk static IPv4', target.currentAddress, 'Blocked',
+          'Last-moment conflict check: ${check.single.message}');
+        continue;
+      }
+      if (mounted) {
+        setState(() => batchProgress =
+          'Configuring ${targetDevice.ipAddress} → ${target.proposedAddress} · ${index + 1}/${plan.targets.length}');
+      }
+      try {
+        final result = await discovery.applyStaticIpv4(
+          targetDevice, address: target.proposedAddress, subnetMask: plan.subnetMask,
+        );
+        await store.save(discovery.devices);
+        if (result.verified) {
+          succeeded++;
+          await _record('Bulk static IPv4', target.currentAddress, 'Verified', result.message);
+        } else {
+          failed++;
+          await _record('Bulk static IPv4', target.currentAddress, 'Partial', result.message);
+        }
+      } on OnvifException catch (error) {
+        failed++;
+        await _record('Bulk static IPv4', target.currentAddress, 'Failed', error.message);
+      } catch (error) {
+        failed++;
+        await _record('Bulk static IPv4', target.currentAddress, 'Failed', error.toString());
+      }
+    }
+    await store.save(discovery.devices);
+    await _record('Bulk static IPv4 batch', 'Selected cameras', 'Finished',
+      '$succeeded verified; $blocked blocked by preflight; $failed failed or partially applied. No automatic rollback is available.');
+    if (mounted) {
+      setState(() { batchRunning = false; batchProgress = ''; selected.clear(); });
+      _msg('Bulk IPv4 finished: $succeeded verified, $blocked blocked, $failed failed/partial.');
     }
   }
 
@@ -780,29 +880,106 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
 
   Future<void> _details(CameraDevice d) async {
     focusedDeviceKey = _key(d);
-    await showModalBottomSheet<void>(context:context,isScrollControlled:true,backgroundColor:surface,builder:(context)=>DraggableScrollableSheet(
-      expand:false,initialChildSize:.88,maxChildSize:.96,builder:(context,scroll)=>ListView(controller:scroll,padding:const EdgeInsets.all(20),children:[
-        Center(child:Container(width:38,height:4,decoration:BoxDecoration(color:Colors.black12,borderRadius:BorderRadius.circular(4)))),
-        const SizedBox(height:18),Text(d.userLabel.isEmpty?d.ipAddress:d.userLabel,style:const TextStyle(fontSize:23,fontWeight:FontWeight.w800)),
-        Text('${d.ipAddress} · ${d.manufacturer} · ${d.model}',style:const TextStyle(color:muted)),
-        const SizedBox(height:12),
-        ...[
-          ['MAC',d.macAddress],['Serial number',d.serialNumber],['Hardware ID',d.hardwareId],['Firmware',d.firmwareVersion],['Activation',d.activationState],
-          ['Interface',d.interfaceName],['Sources',d.discoverySources.join(', ')],['Last seen',d.lastSeen?.toLocal().toString() ?? ''],['Reachability',d.reachabilityStatus],['Checked at',d.reachabilityCheckedAt],
-          ['ONVIF endpoint',d.onvifEndpoint],['Service URL',d.deviceServiceUrl],['Interface token',d.networkInterfaceToken],['Capabilities',d.capabilities.join(', ')],['Network interfaces',d.networkSummary],
-          ['Camera IPv4',d.ipv4Address],['Subnet mask',d.ipv4SubnetMask],['Gateway',d.ipv4Gateway],['DNS',d.ipv4DnsServer],
-          ['DHCP',d.ipv4ConfigurationKnown?(d.ipv4DhcpEnabled?'Enabled':'Disabled'):'Unknown'],['Open TCP ports',d.openPorts.join(', ')],
-        ].map((e)=>_detail(e[0],e[1])),
-        const SizedBox(height:14),
-        Wrap(spacing:8,runSpacing:8,children:[
-          OutlinedButton.icon(onPressed:(){Navigator.pop(context);unawaited(_refreshDevice(d));},icon:const Icon(Icons.refresh),label:const Text('Refresh info')),
-          OutlinedButton.icon(onPressed:(){Navigator.pop(context);unawaited(_rename(d));},icon:const Icon(Icons.edit),label:const Text('Rename')),
-          OutlinedButton.icon(onPressed:d.ipv4ConfigurationKnown && d.networkInterfaceToken.isNotEmpty?(){Navigator.pop(context);unawaited(_previewStaticIpv4(d));}:null,icon:const Icon(Icons.preview_outlined),label:const Text('Preview IP')),
-          OutlinedButton.icon(onPressed:d.ipv4ConfigurationKnown && d.networkInterfaceToken.isNotEmpty?(){Navigator.pop(context);unawaited(_staticIp(d));}:null,icon:const Icon(Icons.settings_ethernet),label:const Text('Apply static IPv4')),
-          OutlinedButton.icon(onPressed:()async{final u=Uri(scheme:'http',host:d.ipAddress);if(await canLaunchUrl(u))await launchUrl(u,mode:LaunchMode.externalApplication);},icon:const Icon(Icons.open_in_browser),label:const Text('Open web UI')),
-        ]),
-        const SizedBox(height:12),const Text('Bulk configuration, activation, firmware flashing, reboot and NVR channels are not implemented in desktop main and remain unavailable.',style:TextStyle(color:muted,fontSize:12)),
-      ])));
+    final canConfigure = d.ipv4ConfigurationKnown && d.networkInterfaceToken.isNotEmpty;
+    final canFactoryReset = d.discoverySources.any((source) => source.startsWith('ONVIF')) && d.deviceServiceUrl.isNotEmpty;
+    final deviceHistory = historyEntries.where((entry) =>
+      entry.target.contains(d.ipAddress) || (d.userLabel.isNotEmpty && entry.target.contains(d.userLabel))).toList();
+    await showModalBottomSheet<void>(
+      context: context, isScrollControlled: true, useSafeArea: true,
+      backgroundColor: surface,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      builder: (sheetContext) => SizedBox(
+        height: MediaQuery.sizeOf(sheetContext).height * .88,
+        child: DefaultTabController(
+          length: 3,
+          child: Column(children: [
+            const SizedBox(height: 10),
+            Container(width: 38, height: 4, decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(4))),
+            Padding(padding: const EdgeInsets.fromLTRB(16, 12, 8, 8), child: Row(children: [
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(d.userLabel.isEmpty ? d.ipAddress : d.userLabel,
+                  maxLines: 1, overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+                Text('${d.ipAddress} · ${d.manufacturer} · ${d.model}',
+                  maxLines: 1, overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: muted, fontSize: 11)),
+              ])),
+              IconButton(onPressed: () => Navigator.pop(sheetContext), icon: const Icon(Icons.close)),
+            ])),
+            const TabBar(tabs: [
+              Tab(icon: Icon(Icons.info_outline), text: 'Details'),
+              Tab(icon: Icon(Icons.tune), text: 'Configure'),
+              Tab(icon: Icon(Icons.history), text: 'History'),
+            ]),
+            Expanded(child: TabBarView(children: [
+              ListView(padding: const EdgeInsets.all(16), children: [
+                ...[
+                  ['Device type', DeviceClassifier.classify(d).label],
+                  ['Confidence', DeviceClassifier.classify(d).confidenceLabel],
+                  ['MAC',d.macAddress],['Serial number',d.serialNumber],['Hardware ID',d.hardwareId],
+                  ['Firmware',d.firmwareVersion],['Activation',d.activationState],
+                  ['Interface',d.interfaceName],['Sources',d.discoverySources.join(', ')],
+                  ['Last seen',d.lastSeen?.toLocal().toString() ?? ''],
+                  ['Reachability',d.reachabilityStatus],['Checked at',d.reachabilityCheckedAt],
+                  ['ONVIF endpoint',d.onvifEndpoint],['Service URL',d.deviceServiceUrl],
+                  ['Capabilities',d.capabilities.join(', ')],['Network interfaces',d.networkSummary],
+                  ['Camera IPv4',d.ipv4Address],['Subnet mask',d.ipv4SubnetMask],
+                  ['Gateway',d.ipv4Gateway],['DNS',d.ipv4DnsServer],
+                  ['DHCP',d.ipv4ConfigurationKnown ? (d.ipv4DhcpEnabled ? 'Enabled' : 'Disabled') : 'Unknown'],
+                  ['Open TCP ports',d.openPorts.join(', ')],
+                ].map((e) => _detail(e[0], e[1])),
+                const SizedBox(height: 10),
+                Wrap(spacing: 8, runSpacing: 8, children: [
+                  OutlinedButton.icon(onPressed: () { Navigator.pop(sheetContext); unawaited(_refreshDevice(d)); },
+                    icon: const Icon(Icons.refresh), label: const Text('Refresh info')),
+                  OutlinedButton.icon(onPressed: () { Navigator.pop(sheetContext); unawaited(_rename(d)); },
+                    icon: const Icon(Icons.edit), label: const Text('Rename')),
+                  OutlinedButton.icon(onPressed: () async {
+                    final u = Uri(scheme: 'http', host: d.ipAddress);
+                    final launched = await launchUrl(u, mode: LaunchMode.externalApplication);
+                    if (!launched && mounted) _msg('Could not open the camera web interface.');
+                  }, icon: const Icon(Icons.open_in_browser), label: const Text('Open web UI')),
+                ]),
+              ]),
+              ListView(padding: const EdgeInsets.all(16), children: [
+                _heading('Device', 'Read-only enrichment and supported maintenance'),
+                _tool(Icons.refresh, 'Refresh device information', 'Request ONVIF device information, capabilities and network profile.', () { Navigator.pop(sheetContext); unawaited(_refreshDevice(d)); }),
+                _tool(Icons.verified_outlined, 'Validate firmware candidate', 'Manifest identity and SHA-256 only. This does not install or flash firmware.', () { Navigator.pop(sheetContext); unawaited(_validateFirmwareCandidate(d)); }),
+                _tool(Icons.restore, 'Factory reset', canFactoryReset ? 'ONVIF request only; camera support, credentials and explicit confirmation required.' : 'Unavailable until a compatible ONVIF service is identified.', () { Navigator.pop(sheetContext); unawaited(_factoryReset(d)); }, enabled: canFactoryReset),
+                _cap('Reboot', 'Not implemented by desktop main', false),
+                const Divider(height: 24),
+                _heading('Network', 'Camera-side IPv4 settings reported by ONVIF'),
+                _detail('Current IP', d.ipv4Address),
+                _detail('Subnet mask', d.ipv4SubnetMask),
+                _detail('Gateway', d.ipv4Gateway),
+                _detail('DNS', d.ipv4DnsServer),
+                _detail('DHCP', d.ipv4ConfigurationKnown ? (d.ipv4DhcpEnabled ? 'Enabled' : 'Disabled') : 'Unknown'),
+                _tool(Icons.preview_outlined, 'Preview static IPv4', canConfigure ? 'Validate a proposed address without changing the camera.' : 'Refresh the camera first; a verified interface token is required.', () { Navigator.pop(sheetContext); unawaited(_previewStaticIpv4(d)); }, enabled: canConfigure),
+                _tool(Icons.settings_ethernet, 'Apply static IPv4', canConfigure ? 'Send a guarded ONVIF network change after validation and confirmation.' : 'Unavailable until a verified ONVIF interface profile is available.', () { Navigator.pop(sheetContext); unawaited(_staticIp(d)); }, enabled: canConfigure),
+                const Divider(height: 24),
+                _heading('Storage', 'Local inventory backup and recovery'),
+                _tool(Icons.backup_outlined, 'Back up inventory', 'Export a consistent local SQLite inventory and operation-history backup.', () { Navigator.pop(sheetContext); unawaited(_backupInventory()); }),
+                _tool(Icons.settings_backup_restore, 'Restore inventory', 'Validate the backup and retain a recovery snapshot before replacement.', () { Navigator.pop(sheetContext); unawaited(_restoreInventory()); }),
+                const Text('Mobile backups use the mobile SQLite schema and are not interchangeable with desktop database files.',
+                  style: TextStyle(color: muted, fontSize: 11)),
+              ]),
+              deviceHistory.isEmpty
+                ? const Center(child: Padding(padding: EdgeInsets.all(24), child: Text('No operations recorded for this device yet.', style: TextStyle(color: muted))))
+                : ListView(padding: const EdgeInsets.all(16), children: deviceHistory.map((entry) => Card(
+                    child: ListTile(
+                      dense: true,
+                      leading: Icon(entry.outcome.toLowerCase().contains('fail') ? Icons.error_outline : Icons.history,
+                        color: entry.outcome.toLowerCase().contains('fail') ? const Color(0xFFE58B82) : red),
+                      title: Text(entry.operation),
+                      subtitle: Text('${entry.outcome} · ${entry.occurredAt.toLocal()}\n${entry.details}'),
+                      isThreeLine: entry.details.isNotEmpty,
+                    ),
+                  )).toList()),
+            ])),
+          ]),
+        ),
+      ),
+    );
   }
 
   Widget _detail(String label,String value)=>Padding(padding:const EdgeInsets.symmetric(vertical:5),child:Row(crossAxisAlignment:CrossAxisAlignment.start,children:[
@@ -810,91 +987,193 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
     Expanded(child:SelectableText(value.isEmpty?'Not available':value,style:const TextStyle(fontSize:13))),
   ]));
 
-  Widget _metric(String label,String value,IconData icon)=>Expanded(child:Card(child:Padding(padding:const EdgeInsets.all(12),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-    Icon(icon,color:red),const SizedBox(height:10),Text(value,style:const TextStyle(fontSize:23,fontWeight:FontWeight.w800)),
-    Text(label,style:const TextStyle(color:muted,fontSize:9,fontWeight:FontWeight.w700)),
-  ]))));
 
-  Widget _deviceCard(CameraDevice d){
-    final checked=selected.contains(_key(d));
-    return Card(margin:const EdgeInsets.only(bottom:8),child:InkWell(borderRadius:BorderRadius.circular(18),onTap:()=>_details(d),
-      child:Padding(padding:const EdgeInsets.symmetric(horizontal:8,vertical:10),child:Row(children:[
-        Checkbox(value:checked,onChanged:(v)=>setState(()=>v==true?selected.add(_key(d)):selected.remove(_key(d)))),
-        Icon(d.isCandidate?Icons.device_unknown:Icons.videocam,color:d.isCandidate?const Color(0xFFE6B45D):red),
-        const SizedBox(width:10),Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-          Text(d.userLabel.isEmpty?d.ipAddress:d.userLabel,style:const TextStyle(fontWeight:FontWeight.w800)),
-          Text('${d.ipAddress} · ${d.manufacturer} · ${d.model}',maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(color:muted,fontSize:11)),
-          Text(() { final c=DeviceClassifier.classify(d); return '${c.label} · ${c.confidenceLabel}'; }(),style:const TextStyle(color:red,fontSize:10,fontWeight:FontWeight.w700)),
-          Text('${d.isCandidate?'Unverified candidate':d.reachabilityStatus} · ${d.discoverySources.join(', ')}',maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(color:muted,fontSize:10)),
-        ])),
-        IconButton(onPressed:()=>unawaited(_rename(d)),icon:const Icon(Icons.edit_outlined,size:18)),const Icon(Icons.chevron_right,color:muted),
-      ]))));
+  Widget _deviceCard(CameraDevice d) {
+    final checked = selected.contains(_key(d));
+    final classification = DeviceClassifier.classify(d);
+    final label = d.userLabel.isEmpty ? d.ipAddress : d.userLabel;
+    final state = d.isCandidate ? 'Unverified candidate' : d.reachabilityStatus;
+    return Card(
+      margin: const EdgeInsets.only(bottom: 6),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(9),
+        onTap: () => _details(d),
+        child: Padding(          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+          child: Row(
+            children: [
+              Checkbox(
+                visualDensity: VisualDensity.compact,
+                value: checked,
+                onChanged: (v) => setState(() => v == true ? selected.add(_key(d)) : selected.remove(_key(d))),
+              ),
+              Icon(d.isCandidate ? Icons.device_unknown : Icons.videocam_outlined,
+                  size: 21, color: d.isCandidate ? const Color(0xFFE6B45D) : red),
+              const SizedBox(width: 9),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(label, maxLines: 1, overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
+                  const SizedBox(height: 2),
+                  Text('${d.ipAddress}  ·  ${d.manufacturer} ${d.model}'.trim(),
+                      maxLines: 1, overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: muted, fontSize: 11)),
+                  const SizedBox(height: 3),
+                  Wrap(spacing: 6, runSpacing: 3, children: [
+                    _statusPill(classification.label, classification.confidenceLabel == 'Verified'
+                        ? const Color(0xFF2E7D5B) : const Color(0xFF555555)),
+                    _statusPill(state, d.isCandidate ? const Color(0xFF765A2C) :
+                        (d.reachabilityStatus == 'Reachable' ? const Color(0xFF2E7D5B) : const Color(0xFF555555))),
+                  ]),
+                ]),
+              ),
+              IconButton(
+                visualDensity: VisualDensity.compact,
+                tooltip: 'Rename device',
+                onPressed: () => unawaited(_rename(d)),
+                icon: const Icon(Icons.edit_outlined, size: 17),
+              ),
+              const Icon(Icons.chevron_right, color: muted, size: 19),
+            ],
+          ),
+        ),
+      ),
+    );
   }
+
+  Widget _statusPill(String label, Color color) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+    decoration: BoxDecoration(color: color.withValues(alpha: .22), borderRadius: BorderRadius.circular(5)),
+    child: Text(label, style: TextStyle(color: color == const Color(0xFF555555) ? const Color(0xFFD0D0D0) : const Color(0xFFE8E8E8),
+        fontSize: 9, fontWeight: FontWeight.w700)),
+  );
 
   Widget _heading(String title,String subtitle)=>Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
     Text(title,style:const TextStyle(fontSize:22,fontWeight:FontWeight.w800)),const SizedBox(height:4),Text(subtitle,style:const TextStyle(color:muted,fontSize:13)),
   ]);
 
-  Widget _overview()=>ListView(padding:const EdgeInsets.all(18),children:[
-    _heading('Device manager','Discover, verify and configure compatible cameras'),
-    const SizedBox(height:14),
-    DropdownButtonFormField<String>(key:ValueKey(interfaceName),initialValue:interfaceName,isExpanded:true,decoration:const InputDecoration(labelText:'Discovery interface',prefixIcon:Icon(Icons.lan_outlined)),
-      items:[const DropdownMenuItem<String>(value:'',child:Text('All active IPv4 interfaces')), ...interfaces.map((n)=>DropdownMenuItem(value:n.name,child:Text(n.name)))],onChanged:(v){setState(()=>interfaceName=v);unawaited(_loadNativeInterfaceDetails(v));}),
-    const SizedBox(height:8),
+  Widget _overview() => ListView(padding: const EdgeInsets.all(16), children: [
+    _heading('Network workspace', 'Local camera discovery and device management'),
+    const SizedBox(height: 14),
+    DropdownButtonFormField<String>(
+      key: ValueKey(interfaceName), initialValue: interfaceName, isExpanded: true,
+      decoration: const InputDecoration(labelText: 'Network interface', prefixIcon: Icon(Icons.lan_outlined)),
+      items: [const DropdownMenuItem<String>(value: '', child: Text('All active IPv4 interfaces')),
+        ...interfaces.map((n) => DropdownMenuItem(value: n.name, child: Text(n.name)))],
+      onChanged: (v) { setState(() => interfaceName = v); unawaited(_loadNativeInterfaceDetails(v)); },
+    ),
+    const SizedBox(height: 8),
     Card(child: ListTile(
-      dense: true,
-      leading: const Icon(Icons.router_outlined, color: red),
-      title: Text(activeInterface?.name ?? 'No active interface selected'),
+      dense: true, leading: const Icon(Icons.router_outlined, color: red),
+      title: Text(activeInterface?.name ?? 'All active IPv4 interfaces'),
       subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(_interfaceAddressSummary(activeInterface)),
         const SizedBox(height: 4),
-        Text(
-          nativeInterfaceDetails == null
-              ? 'Native link diagnostics loading…'
-              : nativeInterfaceDetails!['available'] == true
-                  ? "Link: ${nativeInterfaceDetails!['isUp'] == true ? 'Up' : 'Down'} · MTU: ${nativeInterfaceDetails!['mtu'] ?? 'Not exposed by this OS'}"
-                  : 'Native link details unavailable on this platform build',
-          style: const TextStyle(color: muted, fontSize: 11),
-        ),
+        Text(nativeInterfaceDetails == null ? 'Native link diagnostics loading…' :
+          nativeInterfaceDetails!['available'] == true
+            ? "Link: ${nativeInterfaceDetails!['isUp'] == true ? 'Up' : 'Down'} · MTU: ${nativeInterfaceDetails!['mtu'] ?? 'Not exposed by this OS'}"
+            : 'Native link details unavailable on this platform build',
+          style: const TextStyle(color: muted, fontSize: 11)),
       ]),
-      trailing: activeInterface == null ? null : Text('IF ${activeInterface!.index}', style: const TextStyle(color: muted, fontSize: 11)),
     )),
-    const SizedBox(height:14),Row(children:[
-      _metric('DISCOVERED','${discovery.devices.length}',Icons.devices),
-      _metric('REACHABLE','${discovery.devices.where((d)=>d.reachabilityStatus=='Reachable').length}',Icons.wifi),
-      _metric('NEEDS REVIEW','${discovery.devices.where((d)=>d.isCandidate).length}',Icons.search),
-    ]),
-    const SizedBox(height:8),Row(children:[
-      _metric('ONVIF VERIFIED','${discovery.devices.where((d)=>d.discoverySources.contains('ONVIF GetDeviceInformation')).length}',Icons.verified_user_outlined),
-      _metric('OXITA DEVICES','${discovery.devices.where((d)=>d.manufacturer.toLowerCase()=='oxita').length}',Icons.camera_alt_outlined),
-    ]),
-    const SizedBox(height:14),Card(child:ListTile(leading:Icon(discovery.isScanning?Icons.radar:Icons.wifi_tethering,color:const Color(0xFF74C69D)),
-      title:Text(discovery.isScanning?'Discovery in progress':'Network status'),subtitle:Text(discovery.status))),
-    if(reachabilityProgress.isNotEmpty)Padding(padding:const EdgeInsets.all(8),child:Text(reachabilityProgress,style:const TextStyle(color:muted))),
-    if(subnetProgress.isNotEmpty)Padding(padding:const EdgeInsets.all(8),child:Text(subnetProgress,style:const TextStyle(color:muted))),
-    const SizedBox(height:16),_heading('Recently discovered','Saved local inventory'),
-    if(loading)const Center(child:CircularProgressIndicator()) else if(discovery.devices.isEmpty)const Padding(padding:EdgeInsets.all(30),child:Text('No cameras discovered yet. Connect to the camera network and start discovery.',textAlign:TextAlign.center))
-    else ...discovery.devices.take(6).map(_deviceCard),
-    if(discovery.devices.length>6)TextButton(onPressed:()=>setState(()=>tab=1),child:const Text('View all devices')),
+    const SizedBox(height: 12),
+    Card(child: ListTile(
+      leading: Icon(discovery.isScanning ? Icons.radar : Icons.wifi_tethering, color: discovery.isScanning ? red : const Color(0xFF74C69D)),
+      title: Text(discovery.isScanning ? 'Discovery in progress' : 'Discovery status'),
+      subtitle: Text(discovery.status),
+      trailing: Text('${discovery.devices.length} devices', style: const TextStyle(color: muted, fontWeight: FontWeight.w700)),
+    )),
+    if (reachabilityProgress.isNotEmpty) Padding(padding: const EdgeInsets.all(8), child: Text(reachabilityProgress, style: const TextStyle(color: muted))),
+    if (subnetProgress.isNotEmpty) Padding(padding: const EdgeInsets.all(8), child: Text(subnetProgress, style: const TextStyle(color: muted))),
+    const SizedBox(height: 8),
+    _heading('Quick actions', 'Common field workflows'),
+    _tool(Icons.radar, 'Discover devices', 'ONVIF, Oxita Contract B and UPnP discovery on the selected interface.', () => unawaited(_discover())),
+    _tool(Icons.lan, 'Scan subnet', 'Bounded TCP scan. Responding hosts remain unverified candidates.', () => unawaited(_subnet())),
+    _tool(Icons.network_check, 'Check reachability', 'Check selected devices or the visible inventory.', () => unawaited(_reachability())),
+    _tool(Icons.add_link, 'Add device manually', 'Add a known camera IP address or hostname.', () => unawaited(_manual())),
+    _tool(Icons.devices_outlined, 'Open device inventory', 'Search, filter, select and inspect discovered devices.', () => setState(() => tab = 1)),
   ]);
 
-  Widget _devices()=>Column(children:[
-    Padding(padding:const EdgeInsets.fromLTRB(16,14,16,8),child:Column(children:[
-      _heading('Device inventory','${visible.length} matching device(s)'),
-      const SizedBox(height:10),TextField(controller:search,onChanged:(_)=>setState((){}),decoration:const InputDecoration(prefixIcon:Icon(Icons.search),hintText:'Search IP, MAC, model, serial or label')),
-      const SizedBox(height:8),
-      DropdownButtonFormField<String>(key:ValueKey(deviceTypeFilter),initialValue:deviceTypeFilter,isExpanded:true,decoration:const InputDecoration(labelText:'Device type'),
-        items:const ['All device types','camera','nvr','router','switch','printer','computer','unknown'].map((v)=>DropdownMenuItem(value:v,child:Text(v=='All device types'?v:'${v[0].toUpperCase()}${v.substring(1)}',overflow:TextOverflow.ellipsis))).toList(),onChanged:(v)=>setState(()=>deviceTypeFilter=v??'All device types')),
-      const SizedBox(height:8),Row(children:[
-        Expanded(child:DropdownButtonFormField<String>(key:ValueKey(manufacturerFilter),initialValue:manufacturerFilter,isExpanded:true,decoration:const InputDecoration(labelText:'Manufacturer'),
-          items:const ['All manufacturers','ONVIF devices','Oxita devices','Other / unknown'].map((v)=>DropdownMenuItem(value:v,child:Text(v,overflow:TextOverflow.ellipsis))).toList(),onChanged:(v)=>setState(()=>manufacturerFilter=v??'All manufacturers'))),
-        const SizedBox(width:8),Expanded(child:DropdownButtonFormField<String>(key:ValueKey(statusFilter),initialValue:statusFilter,isExpanded:true,decoration:const InputDecoration(labelText:'Status'),
-          items:const ['All statuses','Online','Activated','Not activated','Unverified candidates'].map((v)=>DropdownMenuItem(value:v,child:Text(v,overflow:TextOverflow.ellipsis))).toList(),onChanged:(v)=>setState(()=>statusFilter=v??'All statuses'))),
+  Widget _devices() => Column(children: [
+    Padding(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 7),
+      child: Column(children: [
+        Row(children: [
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('Network inventory', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+            Text('${visible.length} matching · ${discovery.devices.length} total',
+              style: const TextStyle(color: muted, fontSize: 11)),
+          ])),
+          IconButton(tooltip: 'Refresh history and inventory', onPressed: () => setState(() {}),
+            icon: const Icon(Icons.refresh)),
+          IconButton(tooltip: 'Export CSV', onPressed: () => unawaited(_export()),
+            icon: const Icon(Icons.file_download_outlined)),
+        ]),
+        const SizedBox(height: 7),
+        DropdownButtonFormField<String>(
+          key: ValueKey(interfaceName), initialValue: interfaceName, isExpanded: true,
+          decoration: const InputDecoration(isDense: true, labelText: 'Discovery interface', prefixIcon: Icon(Icons.lan_outlined)),
+          items: [const DropdownMenuItem<String>(value: '', child: Text('All active IPv4 interfaces')),
+            ...interfaces.map((n) => DropdownMenuItem(value: n.name, child: Text(n.name)))],
+          onChanged: (v) { setState(() => interfaceName = v); unawaited(_loadNativeInterfaceDetails(v)); },
+        ),
+        const SizedBox(height: 7),
+        Row(children: [
+          Expanded(child: FilledButton.icon(
+            onPressed: () => unawaited(_discover()),
+            icon: Icon(discovery.isScanning ? Icons.stop : Icons.radar, size: 17),
+            label: Text(discovery.isScanning ? 'Stop' : 'Discover'),
+          )),
+          const SizedBox(width: 6),
+          Expanded(child: OutlinedButton.icon(
+            onPressed: () => unawaited(_subnet()),
+            icon: const Icon(Icons.lan, size: 17), label: const Text('Subnet scan'),
+          )),
+          const SizedBox(width: 6),
+          Expanded(child: OutlinedButton.icon(
+            onPressed: () => unawaited(_reachability()),
+            icon: const Icon(Icons.network_check, size: 17), label: const Text('Reachability'),
+          )),
+        ]),
+        if (discovery.status.isNotEmpty)
+          Align(alignment: Alignment.centerLeft, child: Padding(
+            padding: const EdgeInsets.only(top: 5),
+            child: Text(discovery.status, maxLines: 2, overflow: TextOverflow.ellipsis,
+              style: const TextStyle(color: muted, fontSize: 10)),
+          )),
+        const SizedBox(height: 7),
+        TextField(controller: search, onChanged: (_) => setState(() {}),
+          decoration: const InputDecoration(isDense: true, prefixIcon: Icon(Icons.search), hintText: 'Search IP, MAC, model, serial or label')),
+        const SizedBox(height: 7),
+        Row(children: [
+          Expanded(child: DropdownButtonFormField<String>(
+            key: ValueKey(deviceTypeFilter), initialValue: deviceTypeFilter, isExpanded: true,
+            decoration: const InputDecoration(isDense: true, labelText: 'Device type'),
+            items: const ['All device types','camera','nvr','router','switch','printer','computer','unknown']
+              .map((v) => DropdownMenuItem(value: v, child: Text(v == 'All device types' ? v : '${v[0].toUpperCase()}${v.substring(1)}', overflow: TextOverflow.ellipsis))).toList(),
+            onChanged: (v) => setState(() => deviceTypeFilter = v ?? 'All device types'),
+          )),
+          const SizedBox(width: 7),
+          Expanded(child: DropdownButtonFormField<String>(
+            key: ValueKey(statusFilter), initialValue: statusFilter, isExpanded: true,
+            decoration: const InputDecoration(isDense: true, labelText: 'Status'),
+            items: const ['All statuses','Online','Activated','Not activated','Unverified candidates']
+              .map((v) => DropdownMenuItem(value: v, child: Text(v, overflow: TextOverflow.ellipsis))).toList(),
+            onChanged: (v) => setState(() => statusFilter = v ?? 'All statuses'),
+          )),
+        ]),
+        const SizedBox(height: 4),
+        Row(children: [
+          TextButton(onPressed: () => setState(() => selected.addAll(visible.map(_key))), child: const Text('Select all')),
+          TextButton(onPressed: () => setState(selected.clear), child: const Text('Clear')),
+          const Spacer(),
+          Text('${selected.length} selected', style: const TextStyle(color: muted, fontSize: 11)),
+        ]),
       ]),
-      Row(children:[TextButton(onPressed:()=>setState(()=>selected.addAll(visible.map(_key))),child:const Text('Select all')),
-        TextButton(onPressed:()=>setState(selected.clear),child:const Text('Clear')),const Spacer(),Text('${selected.length} selected',style:const TextStyle(color:muted,fontSize:12))]),
-    ])),
-    Expanded(child:visible.isEmpty?const Center(child:Text('No matching devices')):ListView(padding:const EdgeInsets.symmetric(horizontal:16),children:visible.map(_deviceCard).toList())),
+    ),
+    Expanded(child: loading ? const Center(child: CircularProgressIndicator()) :
+      visible.isEmpty ? const Center(child: Text('No matching devices. Discover cameras or adjust your filters.')) :
+      ListView.builder(padding: const EdgeInsets.fromLTRB(10, 0, 10, 12),
+        itemCount: visible.length, itemBuilder: (context, index) => _deviceCard(visible[index]))),
   ]);
 
   Widget _tools()=>ListView(padding:const EdgeInsets.all(18),children:[
@@ -905,14 +1184,14 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
     _tool(Icons.add_link,'Add device manually','Add a known camera IPv4 address.',()=>unawaited(_manual())),
     _tool(Icons.file_download,'Export inventory CSV','Share filtered inventory with device, network and capability fields.',()=>unawaited(_export())),
     _tool(Icons.playlist_add_check,'Batch refresh selected cameras',batchRunning ? batchProgress : 'Sequential ONVIF read-only refresh; unsupported targets are skipped.',()=>unawaited(_batchRefresh())),
-    _tool(Icons.route,'Multi-camera IPv4 assignment planner','Create a dry-run range plan for selected cameras. Live conflict checks are fail-closed.',()=>unawaited(_previewIpAssignmentPlan())),
+    _tool(Icons.route,'Multi-camera IPv4 assignment','Plan, preflight and sequentially apply static addresses to selected cameras. Writes remain blocked unless every live conflict probe positively reports clear.',()=>unawaited(_previewIpAssignmentPlan()),enabled: !batchRunning),
     if (_focusedDevice != null) _tool(Icons.verified_outlined,'Validate firmware package candidate','Check manifest identity and SHA-256 for the selected camera. Does not flash.',()=>unawaited(_validateFirmwareCandidate(_focusedDevice!))),
     const SizedBox(height:14),_heading('Feature availability','Unimplemented desktop features stay unavailable'),
     _cap('ONVIF discovery and enrichment','Available when supported',true),
     _cap('TCP reachability and expanded subnet scan','Common camera, management, printer and computer ports; up to 4,096 hosts',true),
     _cap('Static IPv4 over ONVIF','Single-camera workflow · verified interface required',true),
     _cap('Batch read-only refresh','Sequential, per-device preflight and cancellation',true),
-    _cap('Multi-camera IPv4 planning','Dry-run only · live ARP/DAD backend unavailable on mobile',false),
+    _cap('Multi-camera IPv4 assignment','Sequential ONVIF writes with per-camera immediate preflight; Android/iOS currently fail closed when probe cannot prove clear',true),
     _cap('Firmware package candidate validation','Metadata + SHA-256 only · no signature verification or flashing',true),
     _cap('Bulk image settings','Not implemented',false),
     _cap('Activation / reboot / firmware','Not implemented',false),
@@ -920,7 +1199,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
     _cap('CP Plus / Hikvision / Prama adapters','No verified vendor adapters',false),
   ]);
 
-  Widget _tool(IconData icon,String title,String subtitle,VoidCallback action)=>Card(child:ListTile(leading:Icon(icon,color:red),title:Text(title),subtitle:Text(subtitle),trailing:const Icon(Icons.chevron_right),onTap:action));
+  Widget _tool(IconData icon, String title, String subtitle, VoidCallback action, {bool enabled = true}) => Card(child: ListTile(leading: Icon(icon, color: enabled ? red : muted), title: Text(title), subtitle: Text(subtitle), trailing: Icon(Icons.chevron_right, color: enabled ? muted : Colors.white24), onTap: enabled ? action : null));
   Widget _cap(String title,String subtitle,bool ok)=>Card(child:ListTile(dense:true,title:Text(title),subtitle:Text(subtitle),trailing:Icon(ok?Icons.check_circle_outline:Icons.lock_outline,color:ok?const Color(0xFF74C69D):muted)));
 
   CameraDevice? get _focusedDevice {
@@ -968,8 +1247,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
           onPressed: () async {
             final uri = Uri(scheme: 'http', host: device.ipAddress);
             final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
-            if (!launched) _msg('Could not open the camera web interface.');
-          },
+            if (!launched) _msg('Could not open the camera web interface.');          },
           icon: const Icon(Icons.open_in_browser), label: const Text('Open web UI'),
         )),
       ]),
@@ -1207,4 +1485,3 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
     ]),
   );
 }
-

@@ -6,9 +6,9 @@ The mobile app uses native mobile navigation and local-first networking. Discove
 
 ## Desktop source of truth
 
-Mobile parity is tracked against the latest merged desktop `main`. The latest inspected desktop commit is `c1f6c6db74f4dd6a80e6e03667bcc72a2a60a749` (PR #15, 25 November 2026), following PR #14's network-discovery and evidence-based inventory update.
+Mobile parity is tracked against the latest merged desktop `main`. The current desktop baseline includes PR #17, merged as `9cefa43b65337ce7707362488279606d3794f858` on 25 November 2026. This merge introduced the focused device workspace: compact inventory, a single Details / Configure / History inspector, and the dark Oxita graphite/charcoal palette with restrained red accents.
 
-The desktop app is C++20 / Qt 6 with local SQLite storage. The mobile app is a separate Flutter/Dart implementation; desktop Qt code and UI are not reused.
+The desktop app is C++20 / Qt 6 with local SQLite storage. The mobile app is a separate Flutter/Dart implementation; desktop Qt code and UI are not reused. The mobile layout follows native phone patterns while preserving the desktop workspace hierarchy.
 
 ## Implemented mobile capabilities
 
@@ -19,8 +19,16 @@ The desktop app is C++20 / Qt 6 with local SQLite storage. The mobile app is a s
 - Full scan for subnets up to 4,096 hosts; a 256-address window around the selected interface for larger subnets.
 - ONVIF device-information/capability/network-interface enrichment.
 - Local SQLite inventory, search and filters, operation history, CSV export, backup/restore and diagnostics.
-- Guarded ONVIF static-IPv4 workflow with validation and confirmation. Platform conflict preflight remains fail-closed; unknown results block writes.
+- Guarded single-camera ONVIF static-IPv4 workflow with validation and confirmation. Platform conflict preflight remains fail-closed; unknown results block writes.
 - Mobile-native navigation, responsive layouts, dialogs and confirmation flows.
+- Dark Oxita graphite workspace theme, compact device inventory, and a selected-device bottom-sheet inspector with Details, Configure (Device / Network / Storage) and History tabs.
+- Device inventory is the default landing screen; discovery, interface selection, subnet scan and reachability controls are available directly above the list.
+
+### Known mobile parity gaps
+
+- Desktop supports sequential bulk static-IPv4 assignment with per-camera validation and result/history reporting. Mobile currently exposes guarded single-camera static-IPv4 configuration only; bulk assignment is not implemented.
+- Desktop uses a resizable side-by-side inventory/inspector. Mobile intentionally uses a touch-friendly bottom-sheet inspector instead.
+- Desktop's native desktop workflows and OS integrations are not copied verbatim into Flutter.
 
 Ported classification and discovery are triage features, not vendor certification. TCP-only scans can miss UDP-only devices. Link-local discovery does not cross routers or VLANs.
 
@@ -58,10 +66,17 @@ Flutter CI runs dependency resolution, static analysis, tests, Android/iOS runne
 
 The manual/tag-triggered mobile artifact workflow creates an Android debug APK and an unsigned iOS simulator app bundle for evaluation. These are preview artifacts only—not Play Store/App Store submissions, signed releases, or production installers. See [mobile release engineering](docs/release-engineering-mobile.md).
 
-The desktop PR #15 security workflow also introduced CodeQL and dependency-review gates. CodeQL does not currently analyze Dart source; mobile CI therefore relies on Flutter analysis/tests, dependency automation/review and explicit platform-security review rather than claiming Dart CodeQL coverage.
+The desktop PR #15 security workflow introduced CodeQL and dependency-review gates. CodeQL does not currently analyze Dart source; mobile CI therefore relies on Flutter analysis/tests, dependency automation/review and explicit platform-security review rather than claiming Dart CodeQL coverage.
 
 ## Validation status
 
 Automated Flutter analysis/tests and Android debug builds are CI-validated on the exact commit shown in the Actions run. Green CI is not proof of camera interoperability. Physical Android/iOS discovery, iOS multicast entitlement, real-camera ONVIF behavior, network-changing operations, credential-vault implementation, signing and release certification remain separate gates.
 
 See [desktop-to-mobile parity](docs/desktop-main-parity.md), [security review](docs/security-and-privacy-review.md), and [mobile release engineering](docs/release-engineering-mobile.md).
+
+
+## Multi-camera static IPv4
+
+The mobile app now includes a sequential bulk assignment workflow: select cameras, build a range plan, review per-camera preflight, confirm, and then re-check each proposed address immediately before its ONVIF write. Each camera's result is recorded separately and the inventory is updated only after the ONVIF service verifies the new address.
+
+**Safety limitation:** current Android probing treats a responding address as occupied and a silent address as unknown; iOS has no validated interface-scoped probe. Neither platform treats silence as proof of availability. Therefore the apply confirmation is shown only if every target returns an explicit `clear` result, which current platform builds do not yet produce. The workflow is implemented, but bulk writes remain intentionally blocked until a real ARP/DAD backend is validated on physical devices.
