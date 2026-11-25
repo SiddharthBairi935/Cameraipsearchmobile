@@ -16,7 +16,7 @@ jobs:
     name: Android debug APK
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
@@ -28,7 +28,7 @@ jobs:
       - name: Build debug APK
         run: flutter build apk --debug
       - name: Upload Android preview APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: oxita-camera-ip-search-android-debug
           path: build/app/outputs/flutter-apk/app-debug.apk
@@ -39,7 +39,7 @@ jobs:
     name: iOS simulator app (unsigned)
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
@@ -55,7 +55,7 @@ jobs:
           cd build/ios/iphonesimulator
           ditto -c -k --sequesterRsrc --keepParent Runner.app oxita-camera-ip-search-ios-simulator.zip
       - name: Upload iOS simulator preview
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: oxita-camera-ip-search-ios-simulator-unsigned
           path: build/ios/iphonesimulator/oxita-camera-ip-search-ios-simulator.zip
