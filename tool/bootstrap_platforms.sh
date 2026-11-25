@@ -212,8 +212,8 @@ for gradle_file in pub_cache.glob("hosted/pub.dev/*/android/build.gradle*"):
     # Groovy Android library plugins may use the positional form: compileSdk 34.
     # The app-level SDK does not override a plugin module's own declaration.
     updated = re.sub(
-        r"(?m)^(\\s*)compileSdk\\s+(?:flutter\\.compileSdkVersion|\\d+)(\\s*(?://.*)?)$",
-        r"\\g<1>compileSdk 36\\g<2>",
+        r"(?m)^(\s*)compileSdk\s+(?:flutter\.compileSdkVersion|\d+)(\s*(?://.*)?)$",
+        r"\g<1>compileSdk 36\g<2>",
         updated,
     )
     if updated != content:
