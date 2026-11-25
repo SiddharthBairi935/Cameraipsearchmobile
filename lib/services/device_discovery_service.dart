@@ -229,7 +229,7 @@ class DeviceDiscoveryService extends ChangeNotifier {
   void _handleDatagram(Datagram datagram, int expectedSequence, String interfaceName) {
     if (datagram.data.length > 65507) return;
     final payload = utf8.decode(datagram.data, allowMalformed: true);
-    if (payload.length <= 16 * 1024 && payload.toUpperCase().startsWith('HTTP/1.') ) {
+    if (payload.length <= 16 * 1024 && payload.toUpperCase().startsWith('HTTP/1.')) {
       final device = SsdpDiscoveryParser.parseResponse(datagram.data, datagram.address, interfaceName);
       if (device != null) _merge(device);
     } else if (payload.contains('CAM_DISCOVER')) {
