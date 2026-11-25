@@ -6,9 +6,9 @@ The mobile app uses native mobile navigation and local-first networking. Discove
 
 ## Desktop source of truth
 
-Mobile parity is tracked against the latest merged desktop `main`. The latest inspected desktop commit is `c1f6c6db74f4dd6a80e6e03667bcc72a2a60a749` (PR #15, 25 November 2026), following PR #14's network-discovery and evidence-based inventory update.
+Mobile parity is tracked against the latest merged desktop `main`. The latest merged desktop commit is `c1f6c6db74f4dd6a80e6e03667bcc72a2a60a749` (PR #15, 25 November 2026), following PR #14's network-discovery and evidence-based inventory update. Desktop PR #17 (`ux/sw-atak-inspired-workspace`) is a separate, still-unmerged UI redesign; this mobile branch provisionally adapts its workspace hierarchy and dark theme for touch navigation.
 
-The desktop app is C++20 / Qt 6 with local SQLite storage. The mobile app is a separate Flutter/Dart implementation; desktop Qt code and UI are not reused.
+The desktop app is C++20 / Qt 6 with local SQLite storage. The mobile app is a separate Flutter/Dart implementation; desktop Qt code and UI are not reused. The mobile layout follows native phone patterns while preserving the desktop workspace hierarchy.
 
 ## Implemented mobile capabilities
 
@@ -21,6 +21,8 @@ The desktop app is C++20 / Qt 6 with local SQLite storage. The mobile app is a s
 - Local SQLite inventory, search and filters, operation history, CSV export, backup/restore and diagnostics.
 - Guarded ONVIF static-IPv4 workflow with validation and confirmation. Platform conflict preflight remains fail-closed; unknown results block writes.
 - Mobile-native navigation, responsive layouts, dialogs and confirmation flows.
+- Dark Oxita graphite workspace theme, compact device inventory, and a selected-device bottom-sheet inspector with Details, Configure (Device / Network / Storage) and History tabs.
+- Device inventory is the default landing screen; discovery, interface selection, subnet scan and reachability controls are available directly above the list.
 
 Ported classification and discovery are triage features, not vendor certification. TCP-only scans can miss UDP-only devices. Link-local discovery does not cross routers or VLANs.
 
