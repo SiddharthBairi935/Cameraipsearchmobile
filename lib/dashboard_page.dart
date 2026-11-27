@@ -985,7 +985,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
   Future<void> _details(CameraDevice d) async {
     focusedDeviceKey = _key(d);
     final canConfigure = d.ipv4ConfigurationKnown && d.networkInterfaceToken.isNotEmpty;
-    final canFactoryReset = d.discoverySources.any((source) => source.startsWith('ONVIF')) && d.deviceServiceUrl.isNotEmpty;
+    final canReboot = d.discoverySources.any((source) => source.startsWith('ONVIF')) && d.deviceServiceUrl.isNotEmpty;
     final deviceHistory = historyEntries.where((entry) =>
       entry.target.contains(d.ipAddress) || (d.userLabel.isNotEmpty && entry.target.contains(d.userLabel))).toList();
     await showModalBottomSheet<void>(
@@ -1049,8 +1049,8 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
                 _heading('Device', 'Read-only enrichment and supported maintenance'),
                 _tool(Icons.refresh, 'Refresh device information', 'Request ONVIF device information, capabilities and network profile.', () { Navigator.pop(sheetContext); unawaited(_refreshDevice(d)); }),
                 _tool(Icons.verified_outlined, 'Validate firmware candidate', 'Manifest identity and SHA-256 only. This does not install or flash firmware.', () { Navigator.pop(sheetContext); unawaited(_validateFirmwareCandidate(d)); }),
-                _tool(Icons.restore, 'Factory reset', canFactoryReset ? 'ONVIF request only; camera support, credentials and explicit confirmation required.' : 'Unavailable until a compatible ONVIF service is identified.', () { Navigator.pop(sheetContext); unawaited(_factoryReset(d)); }, enabled: canFactoryReset),
-                _cap('Reboot', 'Not implemented by desktop main', false),
+                _tool(Icons.restore, 'Factory reset', 'Disabled pending exact-model/firmware validation to match desktop safety policy.', () {}, enabled: false),
+                _tool(Icons.restart_alt, 'Reboot camera', canReboot ? 'Send an explicitly confirmed ONVIF reboot request.' : 'Refresh the camera first to verify its ONVIF service.', () { Navigator.pop(sheetContext); unawaited(_rebootCamera(d)); }, enabled: canReboot),
                 const Divider(height: 24),
                 _heading('Network', 'Camera-side IPv4 settings reported by ONVIF'),
                 _detail('Current IP', d.ipv4Address),
