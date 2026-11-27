@@ -6,7 +6,7 @@ The mobile app uses native mobile navigation and local-first networking. Discove
 
 ## Desktop source of truth
 
-Mobile parity is tracked against the latest merged desktop `main`. The current desktop baseline includes PR #17, merged as `9cefa43b65337ce7707362488279606d3794f858` on 25 November 2026. This merge introduced the focused device workspace: compact inventory, a single Details / Configure / History inspector, and the dark Oxita graphite/charcoal palette with restrained red accents.
+Mobile parity is tracked against the current desktop `main`, not a frozen historical PR. The PR #17 workspace redesign (compact inventory, consolidated Details / Configure / History inspector, and dark Oxita graphite/charcoal palette) remains the visual and workflow baseline; subsequent desktop-main capabilities are mapped in [desktop-to-mobile parity](docs/desktop-main-parity.md).
 
 The desktop app is C++20 / Qt 6 with local SQLite storage. The mobile app is a separate Flutter/Dart implementation; desktop Qt code and UI are not reused. The mobile layout follows native phone patterns while preserving the desktop workspace hierarchy.
 
@@ -17,7 +17,7 @@ The desktop app is C++20 / Qt 6 with local SQLite storage. The mobile app is a s
 - Evidence-based device classification (Camera, NVR, Router, Switch, Printer, Computer, Unknown) with confidence labels.
 - Selectable active IPv4 interfaces, subnet scanning, TCP reachability checks, progress and cancellation.
 - Full scan for subnets up to 4,096 hosts; a 256-address window around the selected interface for larger subnets.
-- ONVIF device-information/capability/network-interface enrichment.
+- ONVIF device-information/capability/network-interface enrichment, including HTTP Basic/Digest challenge handling and WS-Security UsernameToken PasswordDigest retry.
 - Local SQLite inventory, search and filters, operation history, CSV export, backup/restore and diagnostics.
 - Guarded single-camera ONVIF static-IPv4 workflow with validation and confirmation. Platform conflict preflight remains fail-closed; unknown results block writes.
 - Mobile-native navigation, responsive layouts, dialogs and confirmation flows.
@@ -26,7 +26,9 @@ The desktop app is C++20 / Qt 6 with local SQLite storage. The mobile app is a s
 
 ### Known mobile parity gaps
 
-- Desktop supports sequential bulk static-IPv4 assignment with per-camera validation and result/history reporting. Mobile currently exposes guarded single-camera static-IPv4 configuration only; bulk assignment is not implemented.
+- Desktop has DHCP and DNS write workflows with read-back verification, plus reboot requests. Mobile does not yet expose equivalent end-to-end workflows; these must remain unavailable until their mobile services, verification and confirmation flows are implemented.
+- Desktop has operation-level compatibility evidence (responded, implemented-but-untested, advertised-but-unverified, authentication-not-verified, not-reported and not-implemented). Mobile still needs an equivalent evidence view.
+- Mobile includes a sequential bulk static-IPv4 planner and per-camera execution workflow, but execution is intentionally fail-closed: current Android/iOS builds cannot positively establish a clear address using a validated interface-scoped ARP/DAD probe. Do not treat a silent probe as a free address.
 - Desktop uses a resizable side-by-side inventory/inspector. Mobile intentionally uses a touch-friendly bottom-sheet inspector instead.
 - Desktop's native desktop workflows and OS integrations are not copied verbatim into Flutter.
 

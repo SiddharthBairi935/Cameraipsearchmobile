@@ -32,7 +32,7 @@ A support bundle may contain local interface addresses, camera IPs/hostnames, de
 ## Known security gaps
 
 - No Android Keystore/iOS Keychain integration for optional persistent credential storage; credentials remain session-only.
-- ONVIF WS-Security is not implemented.
+- ONVIF WS-Security UsernameToken PasswordDigest is implemented for authentication-related SOAP faults. Each retry uses a fresh cryptographically random nonce and UTC Created value; credentials remain in the in-memory session cache. Automated deterministic digest and loopback challenge/retry tests cover construction and request flow. Physical-camera nonce/timestamp interoperability remains unverified. UsernameToken PasswordText is not implemented.
 - Digest SHA-256 and qop=auth-int are not implemented; supported challenge modes are HTTP Basic and Digest MD5/MD5-sess with qop=auth.
 - No signed diagnostic bundle or automatic PII classification.
 - No remote user/role management or centralized audit backend.

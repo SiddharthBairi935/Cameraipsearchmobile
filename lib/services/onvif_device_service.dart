@@ -9,6 +9,7 @@ import 'package:xml/xml.dart';
 
 import '../models/camera_device.dart';
 import 'network_config_validator.dart';
+import 'onvif_wsse.dart';
 
 class OnvifDeviceService {
   OnvifDeviceService({this.requestCredentials});
@@ -274,6 +275,7 @@ class OnvifDeviceService {
     final client = HttpClient()..connectionTimeout = const Duration(seconds: 4);
     _activeClients.add(client);
     try {
+      String? authorization;
       var response = await _sendSoap(client, uri, operation, body);
       if (response.statusCode == HttpStatus.unauthorized) {
         final challenges = response.headers[HttpHeaders.wwwAuthenticateHeader] ?? const <String>[];
@@ -289,7 +291,7 @@ class OnvifDeviceService {
           throw const OnvifException('Camera authentication was cancelled. No credentials were stored.');
         }
         _sessionCredentials[uri.host] = credentials;
-        final authorization = _authorizationHeader(
+        authorization = _authorizationHeader(
           uri: uri, method: 'POST', scheme: scheme, challenge: parameters, credentials: credentials,
         );
         response = await _sendSoap(client, uri, operation, body, authorization: authorization);
@@ -302,7 +304,25 @@ class OnvifDeviceService {
         if (all.length + chunk.length > 1024 * 1024) throw const OnvifException('ONVIF response exceeds 1 MB.');
         return all..addAll(chunk);
       }).timeout(const Duration(seconds: 10));
-      final document = XmlDocument.parse(utf8.decode(bytes));
+      var document = XmlDocument.parse(utf8.decode(bytes));
+      if (_firstElement(document, 'Fault') != null && _isAuthenticationFault(document)) {
+        final credentials = _sessionCredentials[uri.host] ??
+            await requestCredentials?.call(uri.host, 'ONVIF WS-Security', 'wsse');
+        if (credentials != null) {
+          _sessionCredentials[uri.host] = credentials;
+          response = await _sendSoap(client, uri, operation, body,
+              authorization: authorization, wsseCredentials: credentials);
+          if (response.statusCode < 200 || response.statusCode >= 300) {
+            await response.drain<void>();
+            throw OnvifException('ONVIF $operation WS-Security retry failed with HTTP ${response.statusCode}.');
+          }
+          final retryBytes = await response.fold<List<int>>(<int>[], (all, chunk) {
+            if (all.length + chunk.length > 1024 * 1024) throw const OnvifException('ONVIF response exceeds 1 MB.');
+            return all..addAll(chunk);
+          }).timeout(const Duration(seconds: 10));
+          document = XmlDocument.parse(utf8.decode(retryBytes));
+        }
+      }
       if (_firstElement(document, 'Fault') != null) throw OnvifException('Camera returned a SOAP fault for $operation.');
       if (_firstElement(document, '${operation}Response') == null) {
         throw OnvifException('Camera returned an unexpected response for $operation.');
@@ -327,14 +347,31 @@ class OnvifDeviceService {
   }
 
   Future<HttpClientResponse> _sendSoap(
-    HttpClient client, Uri uri, String operation, String body, {String? authorization}
+    HttpClient client, Uri uri, String operation, String body,
+    {String? authorization, OnvifCredentials? wsseCredentials}
   ) async {
     final request = await client.postUrl(uri).timeout(const Duration(seconds: 5));
     request.followRedirects = false;
     request.headers.contentType = ContentType('application', 'soap+xml', charset: 'utf-8');
     if (authorization != null) request.headers.set(HttpHeaders.authorizationHeader, authorization);
-    request.write(_envelope(operation, body));
+    var envelope = _envelope(operation, body);
+    if (wsseCredentials != null) {
+      final nonce = List<int>.generate(20, (_) => math.Random.secure().nextInt(256));
+      final created = DateTime.now().toUtc().toIso8601String();
+      envelope = OnvifWsse.addUsernameToken(envelope, username: wsseCredentials.username,
+          password: wsseCredentials.password, nonce: nonce, createdUtc: created);
+    }
+    request.write(envelope);
     return request.close().timeout(const Duration(seconds: 45));
+  }
+
+  static bool _isAuthenticationFault(XmlDocument document) {
+    final fault = _firstElement(document, 'Fault');
+    if (fault == null) return false;
+    final detail = fault.innerText.toLowerCase();
+    return detail.contains('notauthorized') || detail.contains('failedauthentication') ||
+        detail.contains('invalidsecurity') || detail.contains('securitytoken') ||
+        detail.contains('authentication') || detail.contains('username');
   }
 
   static String? _selectChallenge(List<String> challenges) {
