@@ -1,5 +1,7 @@
 # Desktop PR #5 → Mobile parity matrix (historical baseline)
 
+This document records the original PR #5 port. For current desktop-main parity, use [desktop-main-parity.md](desktop-main-parity.md); the rows below are historical and may be superseded by later mobile work.
+
 The current source of truth has moved to desktop `main`. See [desktop-main-parity.md](desktop-main-parity.md) for the current feature mapping, including IP assignment planning, batch preflight/runner and firmware candidate validation.
 
 Source of truth: https://github.com/Karishma6543/camera-ip-search/pull/5 (`release/preproduction-hardening`), stacked on PR #4.
@@ -28,7 +30,7 @@ Status distinguishes a mobile code path from verified physical-device behavior.
 | Manual IP / hostname entry | Implemented | Validated IP addresses and DNS hostnames |
 | Manual device entry / labels | Implemented | IPv4 manual entry and user label |
 | Search and filters | Implemented | IP/MAC/model/serial/label, manufacturer and status |
-| CSV export | Implemented | Shares filtered inventory with extended device columns |
+| CSV export | Implemented | Exports the complete saved inventory with extended device and network columns |
 | Bounded TCP candidate scan | Implemented | Up to 256 hosts, common ports, candidates remain unverified |
 | Scan progress / cancellation | Implemented | Cancellation waits for current bounded socket attempt |
 | Multi-device reachability | Implemented | Selected devices first; otherwise current filtered inventory |
@@ -41,7 +43,7 @@ Status distinguishes a mobile code path from verified physical-device behavior.
 | CP Plus / Hikvision / Prama adapters | Not implemented | No verified desktop adapters |
 | Project activation/configuration | Not implemented | No wire contract |
 | Firmware flashing / NVR / vendor bulk settings | Not implemented | Firmware candidate validation is present, but signature verification and an authorized flashing transport are not; NVR/vendor controls remain unavailable |\n| ONVIF DHCP / DNS writes and reboot | Implemented in mobile code | DHCP/DNS use read-back verification; reboot records acceptance only. Exact camera-model validation remains required |
-| ONVIF WS-Security UsernameToken PasswordDigest | Implemented in mobile code | Fresh nonce/Created retry after authentication SOAP faults; deterministic and loopback tests; physical-camera interoperability pending |\n| OS credential vault | Not implemented | Credentials remain session-only; Android Keystore/iOS Keychain integration is still a release gate |
+| ONVIF WS-Security UsernameToken PasswordDigest | Implemented in mobile code | Fresh nonce/Created retry after authentication SOAP faults; deterministic and loopback tests; physical-camera interoperability pending |\n| OS credential vault | Implemented in code | Opt-in Android Keystore/iOS Keychain storage; physical-device and backup behavior validation pending |
 
 ## Latest desktop main additions (merged PR #11)
 

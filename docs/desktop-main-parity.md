@@ -21,13 +21,15 @@
 | Operation-level compatibility evidence | Desktop reports responded / implemented / advertised / auth-unverified / not-reported / not-implemented states | Implemented in mobile Maintenance workspace; based on recorded response sources and advertised service names, not certification |
 | Sequential bulk static IPv4 | Mobile has range planner, full-batch preview, explicit confirmation, sequential ONVIF writes, per-camera immediate re-probe, post-write address verification and per-target history | **Execution remains fail-closed**: the generated Android probe reports conflict when responsive and unknown when silent; iOS has no live probe. Neither platform currently produces a positive clear result, so the apply action stays disabled until a validated ARP/DAD backend is implemented and physically verified |
 | Local inventory, operation history, backup/restore and diagnostics | SQLite and mobile-native file sharing | Implemented in code; inspect exports before sharing |
+| Factory reset | UI action intentionally disabled, matching desktop | Do not enable from ONVIF discovery alone; exact model/firmware and recovery evidence are required |
+| Inventory CSV export | Complete saved inventory | Includes device identity, capabilities and network fields |
 | Desktop focused workspace | Inventory-first mobile screen and selected-device Details / Configure / History bottom sheet | Implemented as a mobile-native adaptation |
 | Desktop Configure groups | Device / Network / Storage sections inside mobile Configure tab | Implemented in code |
 | Dark Oxita graphite/charcoal palette | Dark mobile surfaces with restrained red accent | Implemented in code; visual review on physical phone remains |
 | Security analysis / CodeQL | Flutter analyze/tests; CodeQL for GitHub Actions workflow configuration only | Dart is not a supported CodeQL language; do not claim Dart CodeQL coverage |
 | Dependency review / updates | Dependabot for pub packages and GitHub Actions; optional PR dependency review | Configured; review findings and lockfile availability |
 | Release artifacts | CI debug APK; manual/tag preview APK and unsigned iOS simulator bundle | Evaluation only; no signed store-ready release |
-| Credential storage design | Session-only credentials; documented Android Keystore/iOS Keychain requirements | Persistent secure-vault integration not implemented |
+| Credential storage | Opt-in `flutter_secure_storage`; endpoint/realm/scheme/account-scoped entries; Settings removal | Android Keystore/iOS Keychain implementation in code; physical-device and backup behavior validation pending |
 
 ## Desktop PR #17 workspace changes and mobile treatment
 
@@ -46,7 +48,7 @@
 - TCP scans do not discover UDP-only services. Local discovery does not cross routers or VLANs.
 - Bulk static-IP assignment is sequential and repeats a conflict probe immediately before each camera write. Current mobile native probes intentionally never interpret silence as free: Android returns unknown when no response is received, and iOS returns unknown because no interface-scoped backend exists. Consequently the bulk apply path is implemented but cannot proceed on current platform builds until a validated ARP/DAD backend can positively establish a clear result. Never weaken this fail-closed rule.
 - iOS multicast requires Apple's multicast entitlement and a correctly provisioned physical-device build.
-- Camera credentials are session-only; do not store them in SQLite, preferences, logs, diagnostics or exports. HTTP Basic/Digest and WS-Security PasswordDigest credentials remain in memory only.
+- Camera credentials are session-only by default. Persistent storage requires explicit opt-in and uses Android Keystore / iOS Keychain; never store credentials in SQLite, preferences, logs, diagnostics or exports. HTTP Basic/Digest and WS-Security PasswordDigest credentials remain in memory unless the user opts in.
 - Factory reset and reboot require a compatible ONVIF endpoint and explicit confirmation; reboot acceptance is not proof of successful restart. Firmware flashing, activation and proprietary vendor operations remain unavailable unless a verified adapter contract, authorization and recovery path are implemented.
 
 ## Release validation still required
@@ -54,7 +56,7 @@
 - Physical Android testing across supported Android versions, manufacturers, Wi-Fi access points and Ethernet adapters.
 - iOS multicast entitlement approval and physical-device validation.
 - Real ONVIF/SSDP/Oxita device testing with exact model, hardware revision and firmware evidence.
-- Platform-specific credential-vault implementation and no-plaintext-fallback tests before offering persistent credential storage.
+- Physical Android/iOS secure-vault validation, including lock/unavailable behavior, reinstall/backup semantics and no-secret leakage checks.
 - Implement and physically validate interface-scoped ARP/DAD probing on Android and iOS; only then can the existing sequential bulk static-IPv4 apply path execute. Validate address conflict, no-response, permissions, wrong-interface and VLAN cases.
 - Signed Android/iOS distribution builds, privacy review, dependency/license review and store-release acceptance.
 

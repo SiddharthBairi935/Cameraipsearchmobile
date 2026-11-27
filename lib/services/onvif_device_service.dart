@@ -14,7 +14,7 @@ import 'onvif_wsse.dart';
 class OnvifDeviceService {
   OnvifDeviceService({this.requestCredentials});
 
-  final Future<OnvifCredentials?> Function(String host, String realm, String scheme)? requestCredentials;
+  final Future<OnvifCredentials?> Function(String host, String realm, String scheme, String endpoint)? requestCredentials;
   final Map<String, OnvifCredentials> _sessionCredentials = {};
   final Map<String, int> _digestNonceCounts = {};
   final Set<HttpClient> _activeClients = {};
@@ -366,6 +366,8 @@ class OnvifDeviceService {
     );
   }
 
+  String _credentialScope(Uri uri) => uri.toString();
+
   Future<XmlDocument> _post(CameraDevice device, String operation, {String body = ''}) async {
     final uri = Uri.tryParse(device.deviceServiceUrl);
     if (uri == null || !isSafeEndpoint(device)) throw const OnvifException('Unsafe or invalid ONVIF service URL.');
@@ -382,12 +384,12 @@ class OnvifDeviceService {
         final scheme = challenge.substring(0, challenge.indexOf(' ')).toLowerCase();
         final parameters = _parseAuthParameters(challenge);
         final realm = parameters['realm'] ?? '';
-        final credentials = _sessionCredentials[uri.host] ??
-            await requestCredentials?.call(uri.host, realm, scheme);
+        final credentials = _sessionCredentials[_credentialScope(uri)] ??
+            await requestCredentials?.call(uri.host, realm, scheme, _credentialScope(uri));
         if (credentials == null) {
           throw const OnvifException('Camera authentication was cancelled. No credentials were stored.');
         }
-        _sessionCredentials[uri.host] = credentials;
+        _sessionCredentials[_credentialScope(uri)] = credentials;
         authorization = _authorizationHeader(
           uri: uri, method: 'POST', scheme: scheme, challenge: parameters, credentials: credentials,
         );
@@ -403,10 +405,10 @@ class OnvifDeviceService {
       }).timeout(const Duration(seconds: 10));
       var document = XmlDocument.parse(utf8.decode(bytes));
       if (_firstElement(document, 'Fault') != null && _isAuthenticationFault(document)) {
-        final credentials = _sessionCredentials[uri.host] ??
-            await requestCredentials?.call(uri.host, 'ONVIF WS-Security', 'wsse');
+        final credentials = _sessionCredentials[_credentialScope(uri)] ??
+            await requestCredentials?.call(uri.host, 'ONVIF WS-Security', 'wsse', _credentialScope(uri));
         if (credentials != null) {
-          _sessionCredentials[uri.host] = credentials;
+          _sessionCredentials[_credentialScope(uri)] = credentials;
           response = await _sendSoap(client, uri, operation, body,
               authorization: authorization, wsseCredentials: credentials);
           if (response.statusCode < 200 || response.statusCode >= 300) {

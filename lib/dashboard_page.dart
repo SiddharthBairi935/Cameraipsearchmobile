@@ -21,6 +21,7 @@ import 'services/ip_assignment_planner.dart';
 import 'services/ip_assignment_preflight.dart';
 import 'services/batch_operation_service.dart';
 import 'services/firmware_package_validator.dart';
+import 'services/credential_vault.dart';
 import 'services/operation_compatibility.dart';
 
 class _FirmwareDigestSink implements Sink<Digest> {
@@ -81,6 +82,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
   late final DeviceDiscoveryService discovery;
   final store = InventoryStore();
   final diagnostics = DiagnosticsService();
+  final credentialVault = CredentialVault();
   final batchRunner = BatchOperationRunner();
   List<OperationHistoryEntry> historyEntries = [];
   final search = TextEditingController();
@@ -109,19 +111,103 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
     unawaited(_load());
   }
 
-  Future<OnvifCredentials?> _credentials(String host, String realm, String scheme) async {
-    final user = TextEditingController(), pass = TextEditingController();
-    final value = await showDialog<OnvifCredentials>(context: context, builder: (context) => AlertDialog(
-      title: const Text('Camera authentication'),
-      content: Column(mainAxisSize: MainAxisSize.min, children: [
-        Text('$scheme authentication requested by $host. Credentials remain in memory for this app session only.'),
-        TextField(controller: user, decoration: const InputDecoration(labelText: 'Username')),
-        TextField(controller: pass, obscureText: true, decoration: const InputDecoration(labelText: 'Password')),
-      ]),
-      actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-        FilledButton(onPressed: () => Navigator.pop(context, OnvifCredentials(user.text, pass.text, realm: realm, scheme: scheme)), child: const Text('Continue'))],
-    ));
-    user.dispose(); pass.dispose(); return value;
+  Future<OnvifCredentials?> _credentials(String host, String realm, String scheme, String endpoint) async {
+    final user = TextEditingController();
+    final pass = TextEditingController();
+    List<CredentialAccount> savedAccounts = [];
+    try {
+      savedAccounts = await credentialVault.accountsFor(endpoint: endpoint, realm: realm, scheme: scheme);
+      if (savedAccounts.isNotEmpty) {
+        user.text = savedAccounts.first.username;
+        pass.text = await credentialVault.readPassword(savedAccounts.first) ?? '';
+      }
+    } catch (error) {
+      await diagnostics.log('warning', 'Secure credential lookup unavailable: $error');
+    }
+    if (!mounted) { user.dispose(); pass.dispose(); return null; }
+    var remember = false;
+    var selectedUsername = savedAccounts.isEmpty ? '' : savedAccounts.first.username;
+    final value = await showDialog<({OnvifCredentials credentials, bool remember})>(
+      context: context,
+      builder: (context) => StatefulBuilder(builder: (context, setDialogState) => AlertDialog(
+        title: const Text('Camera authentication'),
+        content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Text('$scheme authentication requested by $host.'),
+          if (savedAccounts.isNotEmpty)
+            DropdownButtonFormField<String>(
+              initialValue: selectedUsername, isExpanded: true,
+              decoration: const InputDecoration(labelText: 'Saved account'),
+              items: savedAccounts.map((a) => DropdownMenuItem(value: a.username, child: Text(a.username))).toList(),
+              onChanged: (value) async {
+                if (value == null) return;
+                final account = savedAccounts.firstWhere((a) => a.username == value);
+                final password = await credentialVault.readPassword(account);
+                if (!context.mounted) return;
+                setDialogState(() { selectedUsername = value; user.text = value; pass.text = password ?? ''; });
+              },
+            ),
+          TextField(controller: user, decoration: const InputDecoration(labelText: 'Username'),
+            onChanged: (value) => selectedUsername = value),
+          TextField(controller: pass, obscureText: true, decoration: const InputDecoration(labelText: 'Password')),
+          const SizedBox(height: 8),
+          CheckboxListTile(
+            contentPadding: EdgeInsets.zero, value: remember,
+            onChanged: (value) => setDialogState(() => remember = value ?? false),
+            title: const Text('Remember on this device'),
+            subtitle: const Text('Opt in to Android Keystore / iOS Keychain storage.'),
+            controlAffinity: ListTileControlAffinity.leading,
+          ),
+        ])),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(context, (
+            credentials: OnvifCredentials(user.text.trim(), pass.text, realm: realm, scheme: scheme),
+            remember: remember,
+          )), child: const Text('Continue')),
+        ],
+      )),
+    );
+    user.dispose();
+    if (value == null) { pass.dispose(); return null; }
+    if (value.remember) {
+      try {
+        await credentialVault.save(endpoint: endpoint, realm: realm, scheme: scheme,
+          username: value.credentials.username, password: value.credentials.password);
+      } catch (error) {
+        await diagnostics.log('warning', 'Secure credential save unavailable: $error');
+        if (mounted) _msg('Secure storage is unavailable. These credentials will be used for this session only.');
+      }
+    }
+    pass.dispose();
+    return value.credentials;
+  }
+
+  Future<void> _manageSavedCredentials() async {
+    List<CredentialAccount> accounts;
+    try { accounts = await credentialVault.listAccounts(); }
+    catch (error) { _msg('Could not access secure credential storage: $error'); return; }
+    if (!mounted) return;
+    await showDialog<void>(context: context,
+      builder: (context) => StatefulBuilder(builder: (context, setDialogState) => AlertDialog(
+        title: const Text('Saved camera credentials'),
+        content: SizedBox(width: 520, child: accounts.isEmpty
+          ? const Text('No camera credentials are saved on this device.')
+          : ListView(shrinkWrap: true, children: accounts.map((account) => ListTile(
+              contentPadding: EdgeInsets.zero,
+              title: Text(account.username),
+              subtitle: Text(account.endpoint, maxLines: 2, overflow: TextOverflow.ellipsis),
+              trailing: IconButton(tooltip: 'Remove saved credential', icon: const Icon(Icons.delete_outline),
+                onPressed: () async {
+                  try {
+                    await credentialVault.delete(account);
+                    final refreshed = await credentialVault.listAccounts();
+                    setDialogState(() => accounts = refreshed);
+                  } catch (error) { if (mounted) _msg('Could not remove saved credential: $error'); }
+                }),
+            )).toList())),
+        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close'))],
+      )),
+    );
   }
 
   Future<void> _load() async {
@@ -429,87 +515,13 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
         Text('Static IPv4 changes require a verified ONVIF interface token. Preview validates values without sending a request. Applying may interrupt connectivity; there is no automatic rollback.'),
         SizedBox(height: 10),
         Text('Camera maintenance', style: TextStyle(fontWeight: FontWeight.w800)),
-        Text('ONVIF factory reset supports explicit Soft/Hard requests when the camera exposes and authorizes SetSystemFactoryDefault. It can erase settings and change the camera IP. Reboot, activation, NVR channels and firmware flashing remain unavailable.'),
+        Text('ONVIF reboot requests require explicit confirmation. Factory reset remains disabled until exact-model/firmware support and recovery behavior are verified. Activation, NVR channels and firmware flashing are unavailable.'),
         SizedBox(height: 10),
         Text('Bulk IPv4', style: TextStyle(fontWeight: FontWeight.w800)),
         Text('Desktop main supports sequential bulk static IPv4 assignment after a complete preview and per-camera conflict checks. Mobile keeps execution blocked unless a platform probe can positively establish that each address is clear; unknown is never treated as free.'),
       ])),
       actions: [FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Close'))],
     ));
-  }
-
-  Future<void> _factoryReset(CameraDevice device) async {
-    if (!device.discoverySources.any((source) => source.startsWith('ONVIF')) ||
-        device.deviceServiceUrl.isEmpty) {
-      _msg('Factory reset requires a verified ONVIF camera. Refresh device information first.');
-      return;
-    }
-    var mode = 'Soft';
-    final selectedMode = await showDialog<String>(
-      context: context,
-      builder: (context) => StatefulBuilder(builder: (context, setDialogState) => AlertDialog(
-        title: const Text('Choose factory-reset mode'),
-        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('Target: ${device.ipAddress} · ${device.manufacturer} · ${device.model}'),
-          const SizedBox(height: 12),
-          RadioGroup<String>(
-            groupValue: mode,
-            onChanged: (value) => setDialogState(() => mode = value ?? 'Soft'),
-            child: Column(
-              children: const [
-                RadioListTile<String>(
-                  contentPadding: EdgeInsets.zero,
-                  value: 'Soft',
-                  title: Text('Soft reset'),
-                  subtitle: Text('Restore device settings while retaining factory-default behavior defined by the camera'),
-                ),
-                RadioListTile<String>(
-                  contentPadding: EdgeInsets.zero,
-                  value: 'Hard',
-                  title: Text('Hard reset'),
-                  subtitle: Text('Request the camera’s hard factory-default mode; support varies by model'),
-                ),
-              ],
-            ),
-          ),
-        ]),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(context, mode), child: const Text('Continue')),
-        ],
-      )),
-    );
-    if (selectedMode == null || !mounted) return;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Confirm destructive camera reset'),
-        content: Text(
-          'Send ONVIF SetSystemFactoryDefault ($selectedMode) to ${device.ipAddress}? '
-          'This may erase configuration, reset credentials, interrupt video and change the camera IP. '
-          'There is no automatic rollback. The camera must explicitly support and authorize this ONVIF operation.',
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Go back')),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: const Color(0xFFC62836)),
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Send reset request'),
-          ),
-        ],
-      ),    );
-    if (confirmed != true || !mounted) return;
-    try {
-      final message = await discovery.factoryReset(device, factoryDefaultType: selectedMode);
-      await _record('Factory reset', device.ipAddress, 'Accepted', message);
-      _msg(message);
-    } on OnvifException catch (error) {
-      await _record('Factory reset', device.ipAddress, 'Failed', error.message);
-      _msg(error.message);
-    } catch (error) {
-      await _record('Factory reset', device.ipAddress, 'Failed', error.toString());
-      _msg('Factory reset request failed: $error');
-    }
   }
 
   Future<void> _configureDhcp(CameraDevice device) async {
@@ -973,7 +985,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
   Future<void> _details(CameraDevice d) async {
     focusedDeviceKey = _key(d);
     final canConfigure = d.ipv4ConfigurationKnown && d.networkInterfaceToken.isNotEmpty;
-    final canFactoryReset = d.discoverySources.any((source) => source.startsWith('ONVIF')) && d.deviceServiceUrl.isNotEmpty;
+    final canReboot = d.discoverySources.any((source) => source.startsWith('ONVIF')) && d.deviceServiceUrl.isNotEmpty;
     final deviceHistory = historyEntries.where((entry) =>
       entry.target.contains(d.ipAddress) || (d.userLabel.isNotEmpty && entry.target.contains(d.userLabel))).toList();
     await showModalBottomSheet<void>(
@@ -1037,8 +1049,8 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
                 _heading('Device', 'Read-only enrichment and supported maintenance'),
                 _tool(Icons.refresh, 'Refresh device information', 'Request ONVIF device information, capabilities and network profile.', () { Navigator.pop(sheetContext); unawaited(_refreshDevice(d)); }),
                 _tool(Icons.verified_outlined, 'Validate firmware candidate', 'Manifest identity and SHA-256 only. This does not install or flash firmware.', () { Navigator.pop(sheetContext); unawaited(_validateFirmwareCandidate(d)); }),
-                _tool(Icons.restore, 'Factory reset', canFactoryReset ? 'ONVIF request only; camera support, credentials and explicit confirmation required.' : 'Unavailable until a compatible ONVIF service is identified.', () { Navigator.pop(sheetContext); unawaited(_factoryReset(d)); }, enabled: canFactoryReset),
-                _cap('Reboot', 'Not implemented by desktop main', false),
+                _tool(Icons.restore, 'Factory reset', 'Disabled pending exact-model/firmware validation to match desktop safety policy.', () {}, enabled: false),
+                _tool(Icons.restart_alt, 'Reboot camera', canReboot ? 'Send an explicitly confirmed ONVIF reboot request.' : 'Refresh the camera first to verify its ONVIF service.', () { Navigator.pop(sheetContext); unawaited(_rebootCamera(d)); }, enabled: canReboot),
                 const Divider(height: 24),
                 _heading('Network', 'Camera-side IPv4 settings reported by ONVIF'),
                 _detail('Current IP', d.ipv4Address),
@@ -1344,7 +1356,8 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
       ]);
     }
     final canConfigure = device.ipv4ConfigurationKnown && device.networkInterfaceToken.isNotEmpty;
-    final canFactoryReset = device.discoverySources.any((source) => source.startsWith('ONVIF')) && device.deviceServiceUrl.isNotEmpty;
+    // Factory reset remains unavailable until exact-model/firmware validation is recorded.
+    final canReboot = device.discoverySources.any((source) => source.startsWith('ONVIF')) && device.deviceServiceUrl.isNotEmpty;
     return ListView(padding: const EdgeInsets.all(18), children: [
       _heading('Maintenance', 'Actions for the selected camera'),
       const SizedBox(height: 14),
@@ -1375,12 +1388,12 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
       _heading('Camera maintenance', 'Only verified ONVIF operations are exposed'),
       const SizedBox(height: 8),
       OutlinedButton.icon(
-        onPressed: canFactoryReset ? () => unawaited(_factoryReset(device)) : null,
+        onPressed: null,
         icon: const Icon(Icons.restore, color: Color(0xFFC62836)),
-        label: const Text('Factory reset camera'),
+        label: const Text('Factory reset unavailable — model validation required'),
       ),
       OutlinedButton.icon(
-        onPressed: canFactoryReset ? () => unawaited(_rebootCamera(device)) : null,
+        onPressed: canReboot ? () => unawaited(_rebootCamera(device)) : null,
         icon: const Icon(Icons.restart_alt), label: const Text('Reboot camera'),
       ),
       const SizedBox(height: 20),
@@ -1428,7 +1441,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
       )),
       const SizedBox(height: 8),
       _cap('Factory reset', 'ONVIF Soft/Hard request · camera support and authorization required', true),
-      _cap('Reboot', 'Not implemented', false),
+      _cap('Reboot', 'ONVIF SystemReboot request · explicit confirmation; acceptance is not completion', true),
       _cap('DHCP / DNS write configuration', 'ONVIF writes with read-back verification', true),
       const SizedBox(height: 14),
       _heading('Compatibility', 'Operation-level support and evidence'),
@@ -1597,6 +1610,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
     _tool(Icons.backup,'Back up local inventory','Create a consistent SQLite backup of saved devices and operation history.',()=>unawaited(_backupInventory())),
     _tool(Icons.settings_backup_restore,'Restore inventory backup','Validate a backup and retain a recovery snapshot before restoring.',()=>unawaited(_restoreInventory())),
     _tool(Icons.file_download,'Export inventory','Share the current inventory as CSV.',()=>unawaited(_export())),
+    _tool(Icons.key_outlined,'Manage saved camera credentials','View and remove credentials stored in the OS secure vault.',()=>unawaited(_manageSavedCredentials())),
     const SizedBox(height:12),const Text('iOS multicast/broadcast requires Apple multicast entitlement and physical-device validation. Android local-network permissions are handled by the native bootstrap runner.',style:TextStyle(color:muted,fontSize:12)),
   ]));
 

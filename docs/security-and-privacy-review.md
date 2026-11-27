@@ -20,7 +20,7 @@
 - SSDP responses are bounded and sender-IP bound; untrusted LOCATION URLs are never fetched.
 - Static IPv4 writes require verified ONVIF interface evidence, local validation, explicit confirmation, SOAP response validation and post-change verification.
 - HTTP redirects are disabled for SOAP requests; response bodies and network timeouts are bounded.
-- Basic/Digest credentials are session-only and are not intentionally persisted.
+- Basic/Digest credentials are session-only by default. Persistent storage requires explicit user opt-in and uses Android Keystore / iOS Keychain via `flutter_secure_storage`.
 - Operation history and diagnostics redact common credential/authorization fields, URL user-info and namespaced XML credential elements.
 - Support export excludes the SQLite inventory and ONVIF interface tokens; the user previews and confirms sharing.
 - SQLite integrity checks run before migration; a failed check aborts opening rather than intentionally replacing the existing database.
@@ -31,13 +31,13 @@ A support bundle may contain local interface addresses, camera IPs/hostnames, de
 
 ## Known security gaps
 
-- No Android Keystore/iOS Keychain integration for optional persistent credential storage; credentials remain session-only.
-- ONVIF WS-Security UsernameToken PasswordDigest is implemented for authentication-related SOAP faults. Each retry uses a fresh cryptographically random nonce and UTC Created value; credentials remain in the in-memory session cache. Automated deterministic digest and loopback challenge/retry tests cover construction and request flow. Physical-camera nonce/timestamp interoperability remains unverified. UsernameToken PasswordText is not implemented.
+- Secure-vault integration is implemented in code; physical-device validation of provider lock/unavailable behavior, backup and reinstall semantics remains pending.
+- ONVIF WS-Security UsernameToken PasswordDigest is implemented for authentication-related SOAP faults. Each retry uses a fresh cryptographically random nonce and UTC Created value; credentials remain in the in-memory session cache and are persisted only when the user explicitly opts in to the secure vault. Automated deterministic digest and loopback challenge/retry tests cover construction and request flow. Physical-camera nonce/timestamp interoperability remains unverified. UsernameToken PasswordText is not implemented.
 - Digest SHA-256 and qop=auth-int are not implemented; supported challenge modes are HTTP Basic and Digest MD5/MD5-sess with qop=auth.
 - No signed diagnostic bundle or automatic PII classification.
 - No remote user/role management or centralized audit backend.
 - iOS multicast discovery requires Apple's multicast entitlement and a correctly provisioned build.
-- Camera firmware update, reboot, factory reset, DHCP/DNS writes and vendor-specific configuration remain unavailable without verified contracts and recovery workflows.
+- Reboot and DHCP/DNS writes are implemented through ONVIF with confirmation/read-back behavior; exact-model hardware validation remains pending. Factory reset remains disabled until exact-model/firmware support and recovery behavior are verified. Firmware flashing, activation, password changes, PTZ, NVR channels, stream preview/snapshot and proprietary vendor operations remain unavailable because the desktop source does not provide verified end-to-end implementations for them.
 
 ## Security automation
 

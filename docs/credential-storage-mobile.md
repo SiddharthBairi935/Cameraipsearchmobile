@@ -1,34 +1,19 @@
-# Mobile credential storage: design and release gate
+# Mobile credential storage
 
-## Current state
+## Implemented behavior
 
-Camera credentials are session-only in the mobile app. There is no persistent credential-vault integration. Do not describe the current behavior as encrypted credential storage or imply that credentials survive an app restart.
+Camera credentials remain session-only by default. Users may explicitly select **Remember on this device** during ONVIF authentication. Opted-in credentials are stored through `flutter_secure_storage`, backed by Android Keystore on Android and Keychain Services on iOS. The app provides a Settings action to list and remove saved camera accounts.
 
-## Required platform providers
+The secure index contains endpoint/account metadata only; passwords are stored under separate SHA-256-derived keys. Credential identity is scoped to the normalized ONVIF endpoint (including port and service path), authentication realm, scheme and username. Credentials are never written to the inventory database, preferences, operation history, logs, diagnostics or exported support bundles.
 
-| Platform | Required provider | Scope |
-|---|---|---|
-| Android | Android Keystore-backed credential storage (prefer a maintained platform implementation) | App/user scoped; keys non-exportable where supported |
-| iOS | Keychain Services | App access group; least-privilege accessibility class |
+## Failure behavior
 
-Do not create a home-grown encryption scheme or store an encryption key beside an encrypted database. If the secure provider is unavailable, locked or denied, continue in session-only mode and tell the user credentials will not persist. Never fall back to plaintext, SQLite, shared preferences, logs, crash reports, support bundles or analytics.
+If secure storage is unavailable, locked or denied, the app reports that the credential will be used for the current session only. It does not fall back to plaintext storage. Users can continue without opting in. Removing an account deletes its password entry and index reference.
 
-## Credential identity and UX
+## Platform requirements and release gate
 
-Use a stable non-secret key derived from normalized protocol, host, port, service path and account name. Never include the password in the key, logs, UI accessibility labels, operation history or diagnostics. Separate accounts and endpoints; never reuse credentials across hosts automatically.
-
-Persistent storage must be opt-in through an explicit “Remember on this device” choice. Explain where the credential is stored and provide a way to remove it. Keep temporary secret buffers short-lived and clear them on a best-effort basis.
-
-## Acceptance tests
-
-- Store/read/delete round trip on supported Android and iOS versions.
-- Locked/unavailable/permission-denied provider behavior.
-- Unicode usernames and passwords; multiple accounts per endpoint.
-- Credential rotation and stale-entry removal.
-- No credential in SQLite, preferences, logs, diagnostics, crash output or exported inventory.
-- No plaintext fallback when provider access fails.
-- App reinstall/restore and OS backup behavior documented and tested.
-
-## Release status
-
-**Not implemented / not validated.** This document is an implementation contract, not evidence of secure-vault support. Keep credentials session-only until platform-specific code and tests pass on physical devices.
+- Android: verify the plugin's Keystore-backed encryption on supported Android versions and device vendors.
+- iOS: verify Keychain access class, app reinstall/backup behavior and entitlement/signing behavior on physical devices.
+- Verify store/read/delete round trips, multiple accounts per endpoint, credential rotation and unavailable-provider behavior.
+- Inspect database, logs, diagnostic exports and crash output to confirm no secrets are persisted.
+- This implementation does not claim vendor certification or physical-device validation. Until platform testing is complete, persistent storage should be treated as implemented in code but not yet hardware-validated.

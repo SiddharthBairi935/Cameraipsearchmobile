@@ -46,9 +46,10 @@ void main() {
       await request.response.close();
     });
     try {
-      final service = OnvifDeviceService(requestCredentials: (host, realm, scheme) async {
+      final service = OnvifDeviceService(requestCredentials: (host, realm, scheme, endpoint) async {
         prompts++;
         expect(host, '127.0.0.1');
+        expect(endpoint, startsWith('http://127.0.0.1:'));
         expect(realm, 'Oxita');
         expect(scheme, 'basic');
         return OnvifCredentials('admin', 'secret', realm: realm, scheme: scheme);
@@ -112,7 +113,7 @@ void main() {
       await request.response.close();
     });
     try {
-      final service = OnvifDeviceService(requestCredentials: (host, realm, scheme) async {
+      final service = OnvifDeviceService(requestCredentials: (host, realm, scheme, endpoint) async {
         prompts++;
         expect(host, '127.0.0.1');
         expect(realm, 'Oxita');

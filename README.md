@@ -26,8 +26,9 @@ The desktop app is C++20 / Qt 6 with local SQLite storage. The mobile app is a s
 
 ### Known mobile parity gaps
 
-- Desktop has DHCP and DNS write workflows with read-back verification, plus reboot requests. Mobile does not yet expose equivalent end-to-end workflows; these must remain unavailable until their mobile services, verification and confirmation flows are implemented.
-- Desktop has operation-level compatibility evidence (responded, implemented-but-untested, advertised-but-unverified, authentication-not-verified, not-reported and not-implemented). Mobile still needs an equivalent evidence view.
+- DHCP and DNS writes now use ONVIF requests with read-back verification; reboot requires explicit confirmation and records request acceptance only.
+- Operation-level compatibility evidence is available in the Maintenance workspace; advertised service categories are not treated as proof of operation support.
+- Factory reset remains disabled to match desktop policy until exact-model/firmware support, authorization and recovery behavior are verified.
 - Mobile includes a sequential bulk static-IPv4 planner and per-camera execution workflow, but execution is intentionally fail-closed: current Android/iOS builds cannot positively establish a clear address using a validated interface-scoped ARP/DAD probe. Do not treat a silent probe as a free address.
 - Desktop uses a resizable side-by-side inventory/inspector. Mobile intentionally uses a touch-friendly bottom-sheet inspector instead.
 - Desktop's native desktop workflows and OS integrations are not copied verbatim into Flutter.
@@ -36,8 +37,8 @@ Ported classification and discovery are triage features, not vendor certificatio
 
 ## Security and credential handling
 
-- Camera credentials are session-only and are not intentionally persisted.
-- No Android Keystore or iOS Keychain credential-vault provider is implemented.
+- Camera credentials are session-only by default. Users may opt in to Android Keystore / iOS Keychain storage during authentication.
+- Saved accounts can be reviewed and removed in Settings; secure-storage failures never fall back to plaintext.
 - No plaintext fallback is permitted if a future secure-vault provider is unavailable.
 - Diagnostic redaction is best-effort; users must inspect support bundles before sharing.
 - See [mobile security and privacy review](docs/security-and-privacy-review.md) and [credential-storage design](docs/credential-storage-mobile.md).
@@ -72,7 +73,7 @@ The desktop PR #15 security workflow introduced CodeQL and dependency-review gat
 
 ## Validation status
 
-Automated Flutter analysis/tests and Android debug builds are CI-validated on the exact commit shown in the Actions run. Green CI is not proof of camera interoperability. Physical Android/iOS discovery, iOS multicast entitlement, real-camera ONVIF behavior, network-changing operations, credential-vault implementation, signing and release certification remain separate gates.
+Automated Flutter analysis/tests and Android debug builds are CI-validated on the exact commit shown in the Actions run. Green CI is not proof of camera interoperability. Physical Android/iOS discovery, iOS multicast entitlement, real-camera ONVIF behavior, secure-vault backup/reinstall behavior, network-changing operations, signing and release certification remain separate gates.
 
 See [desktop-to-mobile parity](docs/desktop-main-parity.md), [security review](docs/security-and-privacy-review.md), and [mobile release engineering](docs/release-engineering-mobile.md).
 
