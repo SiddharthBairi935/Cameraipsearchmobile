@@ -84,7 +84,7 @@ void main() {
     expect(find('Read device information').status, OperationEvidenceStatus.deviceResponded);
     expect(find('Configure DHCP').status, OperationEvidenceStatus.authenticationNotVerified);
     expect(find('Preview stream / RTSP URI').status, OperationEvidenceStatus.serviceAdvertisedNotVerified);
-    expect(find('Firmware upgrade').status, OperationEvidenceStatus.authenticationNotVerified);
+    expect(find('Firmware upgrade').status, OperationEvidenceStatus.serviceAdvertisedNotVerified);
     expect(find('NVR channel management').status, OperationEvidenceStatus.notImplemented);
   });
 }
