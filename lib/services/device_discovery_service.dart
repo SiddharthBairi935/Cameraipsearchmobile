@@ -471,6 +471,31 @@ class DeviceDiscoveryService extends ChangeNotifier {
     return message;
   }
 
+  Future<OnvifWriteResult> setDhcp(CameraDevice device, {required bool enabled}) async {
+    final result = await _onvif.setDhcp(device, enabled: enabled);
+    if (result.verified) _merge(result.device);
+    _setStatus(result.message);
+    onOperation?.call('Configure DHCP', device.ipAddress,
+        result.verified ? 'Verified' : 'Accepted; verification pending', result.message);
+    return result;
+  }
+
+  Future<OnvifWriteResult> setDns(CameraDevice device, {required bool fromDhcp, List<String> servers = const []}) async {
+    final result = await _onvif.setDns(device, fromDhcp: fromDhcp, servers: servers);
+    if (result.verified) _merge(result.device);
+    _setStatus(result.message);
+    onOperation?.call('Configure DNS', device.ipAddress,
+        result.verified ? 'Verified' : 'Not verified', result.message);
+    return result;
+  }
+
+  Future<String> reboot(CameraDevice device) async {
+    final message = await _onvif.reboot(device);
+    _setStatus(message);
+    onOperation?.call('Reboot camera', device.ipAddress, 'Accepted', message);
+    return message;
+  }
+
   Future<OnvifWriteResult> applyStaticIpv4(CameraDevice device, {
     required String address, required String subnetMask, String gateway = '',
   }) async {
