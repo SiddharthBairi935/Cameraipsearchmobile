@@ -47,7 +47,7 @@
 - Bulk static-IP assignment is sequential and repeats a conflict probe immediately before each camera write. Current mobile native probes intentionally never interpret silence as free: Android returns unknown when no response is received, and iOS returns unknown because no interface-scoped backend exists. Consequently the bulk apply path is implemented but cannot proceed on current platform builds until a validated ARP/DAD backend can positively establish a clear result. Never weaken this fail-closed rule.
 - iOS multicast requires Apple's multicast entitlement and a correctly provisioned physical-device build.
 - Camera credentials are session-only; do not store them in SQLite, preferences, logs, diagnostics or exports. HTTP Basic/Digest and WS-Security PasswordDigest credentials remain in memory only.
-- Factory reset is gated to compatible ONVIF service evidence and explicit confirmation. Firmware flashing, activation, reboot and proprietary vendor operations remain unavailable unless a verified adapter contract and recovery path are implemented.
+- Factory reset and reboot require a compatible ONVIF endpoint and explicit confirmation; reboot acceptance is not proof of successful restart. Firmware flashing, activation and proprietary vendor operations remain unavailable unless a verified adapter contract, authorization and recovery path are implemented.
 
 ## Release validation still required
 
