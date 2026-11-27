@@ -542,14 +542,17 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
     final secondary = TextEditingController();
     final values = await showDialog<List<String>>(context: context, builder: (context) => AlertDialog(
       title: const Text('Configure DNS'),
-      content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
-        ValueListenableBuilder<bool>(valueListenable: useDhcp, builder: (context, value, _) => SwitchListTile(
-          contentPadding: EdgeInsets.zero, title: const Text('Use DNS from DHCP'),
-          value: value, onChanged: (next) => useDhcp.value = next,
-        )),
-        TextField(controller: primary, enabled: !useDhcp.value, decoration: const InputDecoration(labelText: 'Primary IPv4 DNS')),
-        TextField(controller: secondary, enabled: !useDhcp.value, decoration: const InputDecoration(labelText: 'Secondary IPv4 DNS (optional)')),
-      ])),
+      content: SingleChildScrollView(child: ValueListenableBuilder<bool>(
+        valueListenable: useDhcp,
+        builder: (context, value, _) => Column(mainAxisSize: MainAxisSize.min, children: [
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero, title: const Text('Use DNS from DHCP'),
+            value: value, onChanged: (next) => useDhcp.value = next,
+          ),
+          TextField(controller: primary, enabled: !value, decoration: const InputDecoration(labelText: 'Primary IPv4 DNS')),
+          TextField(controller: secondary, enabled: !value, decoration: const InputDecoration(labelText: 'Secondary IPv4 DNS (optional)')),
+        ]),
+      )),
       actions: [
         TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
         FilledButton(onPressed: () => Navigator.pop(context, [useDhcp.value ? 'dhcp' : 'manual', primary.text.trim(), secondary.text.trim()]), child: const Text('Review')),
