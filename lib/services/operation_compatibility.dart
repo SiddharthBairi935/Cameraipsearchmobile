@@ -33,6 +33,7 @@ class OperationCompatibility {
     const definitions = <({String label, String service, String response, bool implemented})>[
       (label: 'Read device information', service: 'Device', response: 'ONVIF GetDeviceInformation', implemented: true),
       (label: 'Read capabilities', service: 'Device', response: 'ONVIF GetCapabilities', implemented: true),
+      (label: 'Read ONVIF service inventory', service: 'Device', response: 'ONVIF GetServices', implemented: true),
       (label: 'Read network interfaces', service: 'Device', response: 'ONVIF GetNetworkInterfaces', implemented: true),
       (label: 'Read DNS configuration', service: 'Device', response: 'ONVIF GetDNS', implemented: true),
       (label: 'Configure static IPv4', service: 'Device', response: '', implemented: true),
