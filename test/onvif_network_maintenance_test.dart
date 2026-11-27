@@ -75,6 +75,32 @@ void main() {
     } finally { await subscription.cancel(); await server.close(force: true); }
   });
 
+  test('refresh records successful GetServices inventory evidence', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    final subscription = server.listen((request) async {
+      final body = await utf8.decoder.bind(request).join();
+      request.response.headers.contentType = ContentType('application', 'soap+xml', charset: 'utf-8');
+      if (body.contains('GetDeviceInformation')) {
+        request.response.write('<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope" xmlns:tds="http://www.onvif.org/ver10/device/wsdl"><s:Body><tds:GetDeviceInformationResponse><tds:Manufacturer>Oxita</tds:Manufacturer><tds:Model>Service test</tds:Model></tds:GetDeviceInformationResponse></s:Body></s:Envelope>');
+      } else if (body.contains('GetServices')) {
+        request.response.write('<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope" xmlns:tds="http://www.onvif.org/ver10/device/wsdl"><s:Body><tds:GetServicesResponse><tds:Service><tds:Namespace>http://www.onvif.org/ver10/device/wsdl</tds:Namespace></tds:Service><tds:Service><tds:Namespace>http://www.onvif.org/ver10/media/wsdl</tds:Namespace></tds:Service></tds:GetServicesResponse></s:Body></s:Envelope>');
+      } else {
+        request.response.statusCode = 400;
+      }
+      await request.response.close();
+    });
+    try {
+      final refreshed = await OnvifDeviceService().refresh(CameraDevice(
+        id: '127.0.0.1', ipAddress: '127.0.0.1',
+        deviceServiceUrl: 'http://127.0.0.1:${server.port}/onvif/device_service',
+        discoverySources: const ['ONVIF WS-Discovery'],
+      ));
+      expect(refreshed.discoverySources, contains('ONVIF GetServices'));
+      expect(refreshed.capabilities, contains('Service: device'));
+      expect(refreshed.capabilities, contains('Service: media'));
+    } finally { await subscription.cancel(); await server.close(force: true); }
+  });
+
   test('compatibility evidence separates response, advertised and unimplemented operations', () {
     final entries = OperationCompatibility.evaluate(
       discoverySources: const ['ONVIF GetDeviceInformation'],
