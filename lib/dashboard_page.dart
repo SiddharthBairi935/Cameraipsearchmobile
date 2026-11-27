@@ -21,6 +21,7 @@ import 'services/ip_assignment_planner.dart';
 import 'services/ip_assignment_preflight.dart';
 import 'services/batch_operation_service.dart';
 import 'services/firmware_package_validator.dart';
+import 'services/operation_compatibility.dart';
 
 class _FirmwareDigestSink implements Sink<Digest> {
   Digest? value;
@@ -1297,6 +1298,34 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
     return null;
   }
 
+  Widget _operationEvidence(CameraDevice device) {
+    final entries = OperationCompatibility.evaluate(
+      discoverySources: device.discoverySources,
+      capabilities: device.capabilities,
+    );
+    return Card(child: ExpansionTile(
+      title: const Text('Operation compatibility evidence'),
+      subtitle: const Text('Evidence is not vendor certification'),
+      children: entries.map((entry) {
+        final status = entry.status;
+        final color = status == OperationEvidenceStatus.deviceResponded
+            ? const Color(0xFF74C69D)
+            : status == OperationEvidenceStatus.notImplemented ||
+                    status == OperationEvidenceStatus.serviceAdvertisedNotVerified
+                ? const Color(0xFFE6B45D) : muted;
+        return ListTile(
+          dense: true,
+          title: Text(entry.operation, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+          subtitle: Text('${entry.statusLabel} · ${entry.evidence}', style: const TextStyle(fontSize: 11, color: muted)),
+          leading: Icon(status == OperationEvidenceStatus.deviceResponded
+              ? Icons.check_circle_outline
+              : status == OperationEvidenceStatus.notImplemented ? Icons.block_outlined : Icons.info_outline,
+              color: color, size: 19),
+        );
+      }).toList(),
+    ));
+  }
+
   Widget _maintenance() {
     final device = _focusedDevice;
     if (device == null) {
@@ -1397,7 +1426,10 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
       const SizedBox(height: 8),
       _cap('Factory reset', 'ONVIF Soft/Hard request · camera support and authorization required', true),
       _cap('Reboot', 'Not implemented', false),
-      _cap('DHCP / DNS write configuration', 'Not implemented', false),
+      _cap('DHCP / DNS write configuration', 'ONVIF writes with read-back verification', true),
+      const SizedBox(height: 14),
+      _heading('Compatibility', 'Operation-level support and evidence'),
+      _operationEvidence(device),
     ]);
   }
 
