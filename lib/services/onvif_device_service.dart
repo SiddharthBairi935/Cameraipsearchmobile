@@ -184,6 +184,76 @@ class OnvifDeviceService {
     );
   }
 
+  Future<OnvifWriteResult> setDhcp(CameraDevice device, {required bool enabled}) async {
+    if (!isSafeEndpoint(device) || !device.ipv4ConfigurationKnown ||
+        device.networkInterfaceToken.isEmpty) {
+      throw const OnvifException('A verified ONVIF interface token and current IPv4 profile are required.');
+    }
+    final body = '<tds:InterfaceToken>${_xml(device.networkInterfaceToken)}</tds:InterfaceToken>'
+        '<tds:NetworkInterface><tt:IPv4><tt:Enabled>true</tt:Enabled>'
+        '<tt:Config><tt:DHCP>${enabled ? 'true' : 'false'}</tt:DHCP></tt:Config>'
+        '</tt:IPv4></tds:NetworkInterface>';
+    final response = await _post(device, 'SetNetworkInterfaces', body: body);
+    final reboot = _text(response, 'RebootNeeded').toLowerCase();
+    if (!const {'true', 'false', '1', '0'}.contains(reboot)) {
+      throw const OnvifException('Camera did not return a valid DHCP configuration response.');
+    }
+    if (reboot == 'true' || reboot == '1') {
+      return OnvifWriteResult(device: device, verified: false,
+        message: 'Camera accepted the DHCP change but reports that a reboot is required. No reboot was sent; refresh after the camera restarts.');
+    }
+    final refreshed = await _refreshNetworkInterfaces(device);
+    if (!refreshed.ipv4ConfigurationKnown || refreshed.ipv4DhcpEnabled != enabled) {
+      throw const OnvifException('Camera accepted the DHCP request, but read-back verification did not confirm the requested state. Inventory was not changed.');
+    }
+    return OnvifWriteResult(device: refreshed, verified: true,
+      message: 'DHCP state verified as ${enabled ? 'enabled' : 'disabled'} on interface ${device.networkInterfaceToken}.');
+  }
+
+  Future<OnvifWriteResult> setDns(CameraDevice device, {required bool fromDhcp, List<String> servers = const []}) async {
+    if (!isSafeEndpoint(device)) throw const OnvifException('A verified ONVIF endpoint is required.');
+    final normalized = servers.map((v) => v.trim()).where((v) => v.isNotEmpty).toList();
+    if (fromDhcp && normalized.isNotEmpty) {
+      throw const OnvifException('Do not supply manual DNS servers when selecting DHCP-provided DNS.');
+    }
+    if (!fromDhcp && (normalized.isEmpty || normalized.length > 2 ||
+        normalized.any((v) { final ip = InternetAddress.tryParse(v); return ip == null || ip.type != InternetAddressType.IPv4; }))) {
+      throw const OnvifException('Enter one or two valid IPv4 DNS server addresses.');
+    }
+    final dnsXml = normalized.map((ip) =>
+      '<tds:DNSManual><tt:Type>IPv4</tt:Type><tt:IPv4Address>${_xml(ip)}</tt:IPv4Address></tds:DNSManual>').join();
+    final body = '<tds:FromDHCP>${fromDhcp ? 'true' : 'false'}</tds:FromDHCP>$dnsXml';
+    await _post(device, 'SetDNS', body: body);
+    final verify = await _post(device, 'GetDNS');
+    final fromDhcpElement = _firstElement(verify, 'FromDHCP');
+    final dhcpState = fromDhcpElement?.innerText.trim().toLowerCase();
+    final manual = verify.descendants.whereType<XmlElement>()
+        .where((e) => e.name.local == 'DNSManual')
+        .map((e) => _text(e, 'IPv4Address')).where((v) => v.isNotEmpty).toList();
+    final dhcp = verify.descendants.whereType<XmlElement>()
+        .where((e) => e.name.local == 'DNSFromDHCP')
+        .map((e) => _text(e, 'IPv4Address')).where((v) => v.isNotEmpty).toList();
+    final actual = fromDhcp ? dhcp : manual;
+    final verified = (dhcpState == 'true' || dhcpState == '1') == fromDhcp &&
+        (fromDhcp || normalized.every(actual.contains));
+    if (!verified) throw const OnvifException('Camera accepted the DNS request, but read-back verification did not match. Inventory was not changed.');
+    final updated = device.copyWith(
+      ipv4DnsServer: actual.isEmpty ? '' : actual.first,
+      discoverySources: _append(device.discoverySources, 'ONVIF GetDNS'),
+    );
+    return OnvifWriteResult(device: updated, verified: true,
+      message: fromDhcp ? 'DHCP-provided DNS mode verified.' : 'Manual DNS server(s) verified: ${normalized.join(', ')}.');
+  }
+
+  Future<String> reboot(CameraDevice device) async {
+    if (!isSafeEndpoint(device) ||
+        !(device.discoverySources.any((source) => source.startsWith('ONVIF')) || device.onvifEndpoint.isNotEmpty)) {
+      throw const OnvifException('Reboot requires a verified ONVIF device-service endpoint.');
+    }
+    await _post(device, 'SystemReboot');
+    return 'Camera accepted the ONVIF reboot request. Connectivity will be interrupted; rediscover the camera after it restarts.';
+  }
+
   Future<String> factoryReset(CameraDevice device, {required String factoryDefaultType}) async {
     final mode = factoryDefaultType.trim();
     if (mode != 'Soft' && mode != 'Hard') {
