@@ -17,7 +17,7 @@ The desktop app is C++20 / Qt 6 with local SQLite storage. The mobile app is a s
 - Evidence-based device classification (Camera, NVR, Router, Switch, Printer, Computer, Unknown) with confidence labels.
 - Selectable active IPv4 interfaces, subnet scanning, TCP reachability checks, progress and cancellation.
 - Full scan for subnets up to 4,096 hosts; a 256-address window around the selected interface for larger subnets.
-- ONVIF device-information/capability/network-interface enrichment, including HTTP Basic/Digest challenge handling and WS-Security UsernameToken PasswordDigest retry.
+- ONVIF device-information, capabilities, service inventory, network-interface and DNS reads, including HTTP Basic/Digest challenge handling and WS-Security UsernameToken PasswordDigest retry.
 - Local SQLite inventory, search and filters, operation history, CSV export, backup/restore and diagnostics.
 - Guarded ONVIF static-IPv4 and DHCP configuration, with read-back verification. DNS changes are read back using GetDNS; reboot requires explicit confirmation. Platform conflict preflight remains fail-closed; unknown results block static-IP writes.
 - Mobile-native navigation, responsive layouts, dialogs and confirmation flows.
