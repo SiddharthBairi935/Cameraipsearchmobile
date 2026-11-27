@@ -14,7 +14,7 @@ import 'onvif_wsse.dart';
 class OnvifDeviceService {
   OnvifDeviceService({this.requestCredentials});
 
-  final Future<OnvifCredentials?> Function(String host, String realm, String scheme)? requestCredentials;
+  final Future<OnvifCredentials?> Function(String host, String realm, String scheme, String endpoint)? requestCredentials;
   final Map<String, OnvifCredentials> _sessionCredentials = {};
   final Map<String, int> _digestNonceCounts = {};
   final Set<HttpClient> _activeClients = {};
@@ -366,7 +366,7 @@ class OnvifDeviceService {
     );
   }
 
-  String _credentialScope(Uri uri) => uri.replace(query: '', fragment: '').toString();
+  String _credentialScope(Uri uri) => uri.toString();
 
   Future<XmlDocument> _post(CameraDevice device, String operation, {String body = ''}) async {
     final uri = Uri.tryParse(device.deviceServiceUrl);
@@ -385,7 +385,7 @@ class OnvifDeviceService {
         final parameters = _parseAuthParameters(challenge);
         final realm = parameters['realm'] ?? '';
         final credentials = _sessionCredentials[_credentialScope(uri)] ??
-            await requestCredentials?.call(_credentialScope(uri), realm, scheme);
+            await requestCredentials?.call(uri.host, realm, scheme, _credentialScope(uri));
         if (credentials == null) {
           throw const OnvifException('Camera authentication was cancelled. No credentials were stored.');
         }
@@ -406,7 +406,7 @@ class OnvifDeviceService {
       var document = XmlDocument.parse(utf8.decode(bytes));
       if (_firstElement(document, 'Fault') != null && _isAuthenticationFault(document)) {
         final credentials = _sessionCredentials[_credentialScope(uri)] ??
-            await requestCredentials?.call(_credentialScope(uri), 'ONVIF WS-Security', 'wsse');
+            await requestCredentials?.call(uri.host, 'ONVIF WS-Security', 'wsse', _credentialScope(uri));
         if (credentials != null) {
           _sessionCredentials[_credentialScope(uri)] = credentials;
           response = await _sendSoap(client, uri, operation, body,

@@ -111,7 +111,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
     unawaited(_load());
   }
 
-  Future<OnvifCredentials?> _credentials(String endpoint, String realm, String scheme) async {
+  Future<OnvifCredentials?> _credentials(String host, String realm, String scheme, String endpoint) async {
     final user = TextEditingController();
     final pass = TextEditingController();
     List<CredentialAccount> savedAccounts = [];
@@ -132,7 +132,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
       builder: (context) => StatefulBuilder(builder: (context, setDialogState) => AlertDialog(
         title: const Text('Camera authentication'),
         content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Text('$scheme authentication requested by ${Uri.tryParse(endpoint)?.host ?? endpoint}.'),
+          Text('$scheme authentication requested by $host.'),
           if (savedAccounts.isNotEmpty)
             DropdownButtonFormField<String>(
               initialValue: selectedUsername, isExpanded: true,
