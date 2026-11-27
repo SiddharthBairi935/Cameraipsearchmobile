@@ -105,7 +105,7 @@ void main() {
       )).toString();
       expect(parameters['response'], expected);
       expect(body, contains('<tds:'));
-      final operation = RegExp(r'<tds:(GetDeviceInformation|GetCapabilities|GetNetworkInterfaces|GetDNS)>')
+      final operation = RegExp(r'<tds:(GetDeviceInformation|GetCapabilities|GetServices|GetNetworkInterfaces|GetDNS)>')
           .firstMatch(body)!.group(1)!;
       request.response.headers.contentType = ContentType('application', 'soap+xml', charset: 'utf-8');
       request.response.write(_soapResponse(operation));
@@ -127,7 +127,7 @@ void main() {
       final result = await service.refresh(device);
       expect(result.model, 'Authenticated camera');
       expect(prompts, 1);
-      expect(authenticated, 4);
+      expect(authenticated, 5);
     } finally {
       await subscription.cancel();
       await server.close(force: true);
