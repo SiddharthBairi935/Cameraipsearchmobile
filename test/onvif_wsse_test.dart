@@ -62,7 +62,7 @@ void main() {
       await request.response.close();
     });
     try {
-      final service = OnvifDeviceService(requestCredentials: (host, realm, scheme) async {
+      final service = OnvifDeviceService(requestCredentials: (host, realm, scheme, endpoint) async {
         prompted++;
         expect(scheme, 'wsse');
         return const OnvifCredentials('admin', 'secret', scheme: 'wsse');
