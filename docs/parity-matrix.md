@@ -40,7 +40,7 @@ Status distinguishes a mobile code path from verified physical-device behavior.
 | Device Info / Maintenance / Bulk / NVR workspaces | Mobile detail/tools adaptation | Unimplemented desktop operations remain disabled/labelled |
 | CP Plus / Hikvision / Prama adapters | Not implemented | No verified desktop adapters |
 | Project activation/configuration | Not implemented | No wire contract |
-| Firmware flashing / NVR / vendor bulk settings | Not implemented | Firmware candidate validation is present, but signature verification and an authorized flashing transport are not; NVR/vendor controls remain unavailable |\n| ONVIF reboot / DHCP / DNS writes | Not implemented as mobile workflows | Desktop has guarded ONVIF operations; mobile must not expose placeholders without response/read-back verification |
+| Firmware flashing / NVR / vendor bulk settings | Not implemented | Firmware candidate validation is present, but signature verification and an authorized flashing transport are not; NVR/vendor controls remain unavailable |\n| ONVIF DHCP / DNS writes and reboot | Implemented in mobile code | DHCP/DNS use read-back verification; reboot records acceptance only. Exact camera-model validation remains required |
 | ONVIF WS-Security UsernameToken PasswordDigest | Implemented in mobile code | Fresh nonce/Created retry after authentication SOAP faults; deterministic and loopback tests; physical-camera interoperability pending |\n| OS credential vault | Not implemented | Credentials remain session-only; Android Keystore/iOS Keychain integration is still a release gate |
 
 ## Latest desktop main additions (merged PR #11)

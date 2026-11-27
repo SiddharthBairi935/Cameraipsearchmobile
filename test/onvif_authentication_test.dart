@@ -16,6 +16,9 @@ String _soapResponse(String operation) {
   if (operation == 'GetNetworkInterfaces') {
     return '<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope" xmlns:tds="http://www.onvif.org/ver10/device/wsdl"><s:Body><tds:GetNetworkInterfacesResponse/></s:Body></s:Envelope>';
   }
+  if (operation == 'GetServices') {
+    return '<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope" xmlns:tds="http://www.onvif.org/ver10/device/wsdl"><s:Body><tds:GetServicesResponse/></s:Body></s:Envelope>';
+  }
   return '<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope" xmlns:tds="http://www.onvif.org/ver10/device/wsdl"><s:Body><tds:GetDNSResponse><tds:DNSInformation/></tds:GetDNSResponse></s:Body></s:Envelope>';
 }
 
@@ -36,7 +39,7 @@ void main() {
       authenticated++;
       expect(authorization, 'Basic ${base64Encode(utf8.encode('admin:secret'))}');
       expect(body, contains('<tds:'));
-      final operation = RegExp(r'<tds:(GetDeviceInformation|GetCapabilities|GetNetworkInterfaces|GetDNS)>')
+      final operation = RegExp(r'<tds:(GetDeviceInformation|GetCapabilities|GetServices|GetNetworkInterfaces|GetDNS)>')
           .firstMatch(body)!.group(1)!;
       request.response.headers.contentType = ContentType('application', 'soap+xml', charset: 'utf-8');
       request.response.write(_soapResponse(operation));
@@ -58,7 +61,7 @@ void main() {
       final result = await service.refresh(device);
       expect(result.model, 'Authenticated camera');
       expect(prompts, 1);
-      expect(authenticated, 4);
+      expect(authenticated, 5);
     } finally {
       await subscription.cancel();
       await server.close(force: true);
@@ -102,7 +105,7 @@ void main() {
       )).toString();
       expect(parameters['response'], expected);
       expect(body, contains('<tds:'));
-      final operation = RegExp(r'<tds:(GetDeviceInformation|GetCapabilities|GetNetworkInterfaces|GetDNS)>')
+      final operation = RegExp(r'<tds:(GetDeviceInformation|GetCapabilities|GetServices|GetNetworkInterfaces|GetDNS)>')
           .firstMatch(body)!.group(1)!;
       request.response.headers.contentType = ContentType('application', 'soap+xml', charset: 'utf-8');
       request.response.write(_soapResponse(operation));
@@ -124,7 +127,7 @@ void main() {
       final result = await service.refresh(device);
       expect(result.model, 'Authenticated camera');
       expect(prompts, 1);
-      expect(authenticated, 4);
+      expect(authenticated, 5);
     } finally {
       await subscription.cancel();
       await server.close(force: true);

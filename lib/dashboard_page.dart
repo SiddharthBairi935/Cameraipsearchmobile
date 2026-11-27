@@ -21,6 +21,7 @@ import 'services/ip_assignment_planner.dart';
 import 'services/ip_assignment_preflight.dart';
 import 'services/batch_operation_service.dart';
 import 'services/firmware_package_validator.dart';
+import 'services/operation_compatibility.dart';
 
 class _FirmwareDigestSink implements Sink<Digest> {
   Digest? value;
@@ -509,6 +510,97 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
       await _record('Factory reset', device.ipAddress, 'Failed', error.toString());
       _msg('Factory reset request failed: $error');
     }
+  }
+
+  Future<void> _configureDhcp(CameraDevice device) async {
+    if (!device.ipv4ConfigurationKnown || device.networkInterfaceToken.isEmpty) {
+      _msg('Refresh the camera first to obtain a verified ONVIF interface token.'); return;
+    }
+    final enabled = await showDialog<bool>(context: context, builder: (context) => AlertDialog(
+      title: const Text('Configure DHCP'),
+      content: Text('Change DHCP to ${device.ipv4DhcpEnabled ? 'disabled' : 'enabled'} on ${device.ipAddress}? The app will read the interface state back before updating inventory. The camera may disconnect if its address changes.'),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context, null), child: const Text('Cancel')),
+        FilledButton(onPressed: () => Navigator.pop(context, !device.ipv4DhcpEnabled), child: const Text('Confirm')),
+      ],
+    ));
+    if (enabled == null || !mounted) return;
+    try {
+      final result = await discovery.setDhcp(device, enabled: enabled);
+      await store.save(discovery.devices);
+      await _record('Configure DHCP', device.ipAddress,
+          result.verified ? 'Verified' : 'Accepted; verification pending', result.message);
+      _msg(result.message);
+    } on OnvifException catch (error) {
+      await _record('Configure DHCP', device.ipAddress, 'Failed', error.message); _msg(error.message);
+    } catch (error) { _msg('DHCP configuration failed: $error'); }
+  }
+
+  Future<void> _configureDns(CameraDevice device) async {
+    final useDhcp = ValueNotifier<bool>(false);
+    final primary = TextEditingController(text: device.ipv4DnsServer);
+    final secondary = TextEditingController();
+    final values = await showDialog<List<String>>(context: context, builder: (context) => AlertDialog(
+      title: const Text('Configure DNS'),
+      content: SingleChildScrollView(child: ValueListenableBuilder<bool>(
+        valueListenable: useDhcp,
+        builder: (context, value, _) => Column(mainAxisSize: MainAxisSize.min, children: [
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero, title: const Text('Use DNS from DHCP'),
+            value: value, onChanged: (next) => useDhcp.value = next,
+          ),
+          TextField(controller: primary, enabled: !value, decoration: const InputDecoration(labelText: 'Primary IPv4 DNS')),
+          TextField(controller: secondary, enabled: !value, decoration: const InputDecoration(labelText: 'Secondary IPv4 DNS (optional)')),
+        ]),
+      )),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+        FilledButton(onPressed: () => Navigator.pop(context, [useDhcp.value ? 'dhcp' : 'manual', primary.text.trim(), secondary.text.trim()]), child: const Text('Review')),
+      ],
+    ));
+    useDhcp.dispose(); primary.dispose(); secondary.dispose();
+    if (values == null || !mounted) return;
+    final fromDhcp = values[0] == 'dhcp';
+    final servers = [values[1], values[2]].where((v) => v.isNotEmpty).toList();
+    if (!fromDhcp && (servers.isEmpty || servers.length > 2 ||
+        servers.any((v) { final ip = InternetAddress.tryParse(v); return ip == null || ip.type != InternetAddressType.IPv4; }))) {
+      _msg('Enter one or two valid IPv4 DNS addresses.'); return;
+    }
+    final confirmed = await showDialog<bool>(context: context, builder: (context) => AlertDialog(
+      title: const Text('Confirm DNS change'),
+      content: Text('Apply ${fromDhcp ? 'DHCP-provided DNS' : servers.join(' and ')} to ${device.ipAddress}? The app will read the DNS configuration back.'),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+        FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Apply DNS')),
+      ],
+    ));
+    if (confirmed != true || !mounted) return;
+    try {
+      final result = await discovery.setDns(device, fromDhcp: fromDhcp, servers: servers);
+      await store.save(discovery.devices);
+      await _record('Configure DNS', device.ipAddress, 'Verified', result.message); _msg(result.message);
+    } on OnvifException catch (error) {
+      await _record('Configure DNS', device.ipAddress, 'Failed', error.message); _msg(error.message);
+    } catch (error) { _msg('DNS configuration failed: $error'); }
+  }
+
+  Future<void> _rebootCamera(CameraDevice device) async {
+    final confirmed = await showDialog<bool>(context: context, builder: (context) => AlertDialog(
+      title: const Text('Reboot camera?'),
+      content: Text('Send ONVIF SystemReboot to ${device.ipAddress}? Video and network connectivity will be interrupted. The app cannot guarantee when the camera will return.'),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+        FilledButton(style: FilledButton.styleFrom(backgroundColor: red),
+          onPressed: () => Navigator.pop(context, true), child: const Text('Reboot camera')),
+      ],
+    ));
+    if (confirmed != true || !mounted) return;
+    try {
+      final message = await discovery.reboot(device);
+      await _record('Reboot camera', device.ipAddress, 'Accepted', message); _msg(message);
+    } on OnvifException catch (error) {
+      await _record('Reboot camera', device.ipAddress, 'Failed', error.message); _msg(error.message);
+    } catch (error) { _msg('Reboot request failed: $error'); }
   }
 
   Future<void> _staticIp(CameraDevice d) async {
@@ -1209,6 +1301,34 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
     return null;
   }
 
+  Widget _operationEvidence(CameraDevice device) {
+    final entries = OperationCompatibility.evaluate(
+      discoverySources: device.discoverySources,
+      capabilities: device.capabilities,
+    );
+    return Card(child: ExpansionTile(
+      title: const Text('Operation compatibility evidence'),
+      subtitle: const Text('Evidence is not vendor certification'),
+      children: entries.map((entry) {
+        final status = entry.status;
+        final color = status == OperationEvidenceStatus.deviceResponded
+            ? const Color(0xFF74C69D)
+            : status == OperationEvidenceStatus.notImplemented ||
+                    status == OperationEvidenceStatus.serviceAdvertisedNotVerified
+                ? const Color(0xFFE6B45D) : muted;
+        return ListTile(
+          dense: true,
+          title: Text(entry.operation, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+          subtitle: Text('${entry.statusLabel} · ${entry.evidence}', style: const TextStyle(fontSize: 11, color: muted)),
+          leading: Icon(status == OperationEvidenceStatus.deviceResponded
+              ? Icons.check_circle_outline
+              : status == OperationEvidenceStatus.notImplemented ? Icons.block_outlined : Icons.info_outline,
+              color: color, size: 19),
+        );
+      }).toList(),
+    ));
+  }
+
   Widget _maintenance() {
     final device = _focusedDevice;
     if (device == null) {
@@ -1259,11 +1379,10 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
         icon: const Icon(Icons.restore, color: Color(0xFFC62836)),
         label: const Text('Factory reset camera'),
       ),
-      const Card(child: ListTile(
-        leading: Icon(Icons.info_outline, color: muted),
-        title: Text('Reboot is unavailable'),
-        subtitle: Text('Desktop main does not implement a verified reboot operation. Factory reset is available only through ONVIF SetSystemFactoryDefault when the camera supports and authorizes it.'),
-      )),
+      OutlinedButton.icon(
+        onPressed: canFactoryReset ? () => unawaited(_rebootCamera(device)) : null,
+        icon: const Icon(Icons.restart_alt), label: const Text('Reboot camera'),
+      ),
       const SizedBox(height: 20),
       _heading('IPv4 network configuration', 'Camera-side settings reported by ONVIF'),
       const SizedBox(height: 8),
@@ -1285,6 +1404,18 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
           child: const Text('Apply static IPv4'),
         )),
       ]),
+      const SizedBox(height: 8),
+      Row(children: [
+        Expanded(child: OutlinedButton(
+          onPressed: canConfigure ? () => unawaited(_configureDhcp(device)) : null,
+          child: Text(device.ipv4DhcpEnabled ? 'Disable DHCP' : 'Enable DHCP'),
+        )),
+        const SizedBox(width: 8),
+        Expanded(child: OutlinedButton(
+          onPressed: canConfigure ? () => unawaited(_configureDns(device)) : null,
+          child: const Text('Configure DNS'),
+        )),
+      ]),
       const SizedBox(height: 20),
       _heading('Firmware status', 'Read-only information from the camera'),
       const SizedBox(height: 8),
@@ -1298,7 +1429,10 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
       const SizedBox(height: 8),
       _cap('Factory reset', 'ONVIF Soft/Hard request · camera support and authorization required', true),
       _cap('Reboot', 'Not implemented', false),
-      _cap('DHCP / DNS write configuration', 'Not implemented', false),
+      _cap('DHCP / DNS write configuration', 'ONVIF writes with read-back verification', true),
+      const SizedBox(height: 14),
+      _heading('Compatibility', 'Operation-level support and evidence'),
+      _operationEvidence(device),
     ]);
   }
 
