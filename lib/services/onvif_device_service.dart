@@ -83,7 +83,17 @@ class OnvifDeviceService {
           .where((e) => e.name.local == 'Service')
           .map((e) => _text(e, 'Namespace'))
           .where((v) => v.isNotEmpty)
-          .map((v) => 'Service: ${v.split('/').where((p) => p.isNotEmpty).last}')
+          .map((v) {
+            final lower = v.toLowerCase();
+            final name = lower.contains('/device/') ? 'Device'
+                : lower.contains('/media/') ? 'Media'
+                : lower.contains('/imaging/') ? 'Imaging'
+                : lower.contains('/ptz/') ? 'PTZ'
+                : lower.contains('/events/') ? 'Events'
+                : lower.contains('/recording/') ? 'Recording'
+                : v.split('/').where((p) => p.isNotEmpty).last;
+            return 'Service: $name';
+          })
           .toSet();
       updated = updated.copyWith(
         capabilities: {...updated.capabilities, ...serviceNames}.toList(),
