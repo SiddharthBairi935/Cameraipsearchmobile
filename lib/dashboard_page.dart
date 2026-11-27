@@ -21,6 +21,7 @@ import 'services/ip_assignment_planner.dart';
 import 'services/ip_assignment_preflight.dart';
 import 'services/batch_operation_service.dart';
 import 'services/firmware_package_validator.dart';
+import 'services/credential_vault.dart';
 import 'services/operation_compatibility.dart';
 
 class _FirmwareDigestSink implements Sink<Digest> {
@@ -81,6 +82,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
   late final DeviceDiscoveryService discovery;
   final store = InventoryStore();
   final diagnostics = DiagnosticsService();
+  final credentialVault = CredentialVault();
   final batchRunner = BatchOperationRunner();
   List<OperationHistoryEntry> historyEntries = [];
   final search = TextEditingController();
@@ -109,19 +111,102 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
     unawaited(_load());
   }
 
-  Future<OnvifCredentials?> _credentials(String host, String realm, String scheme) async {
-    final user = TextEditingController(), pass = TextEditingController();
-    final value = await showDialog<OnvifCredentials>(context: context, builder: (context) => AlertDialog(
-      title: const Text('Camera authentication'),
-      content: Column(mainAxisSize: MainAxisSize.min, children: [
-        Text('$scheme authentication requested by $host. Credentials remain in memory for this app session only.'),
-        TextField(controller: user, decoration: const InputDecoration(labelText: 'Username')),
-        TextField(controller: pass, obscureText: true, decoration: const InputDecoration(labelText: 'Password')),
-      ]),
-      actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-        FilledButton(onPressed: () => Navigator.pop(context, OnvifCredentials(user.text, pass.text, realm: realm, scheme: scheme)), child: const Text('Continue'))],
-    ));
-    user.dispose(); pass.dispose(); return value;
+  Future<OnvifCredentials?> _credentials(String endpoint, String realm, String scheme) async {
+    final user = TextEditingController();
+    final pass = TextEditingController();
+    List<CredentialAccount> savedAccounts = [];
+    try {
+      savedAccounts = await credentialVault.accountsFor(endpoint: endpoint, realm: realm, scheme: scheme);
+      if (savedAccounts.isNotEmpty) {
+        user.text = savedAccounts.first.username;
+        pass.text = await credentialVault.readPassword(savedAccounts.first) ?? '';
+      }
+    } catch (error) {
+      await diagnostics.log('warning', 'Secure credential lookup unavailable: $error');
+    }
+    var remember = false;
+    var selectedUsername = savedAccounts.isEmpty ? '' : savedAccounts.first.username;
+    final value = await showDialog<({OnvifCredentials credentials, bool remember})>(
+      context: context,
+      builder: (context) => StatefulBuilder(builder: (context, setDialogState) => AlertDialog(
+        title: const Text('Camera authentication'),
+        content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Text('$scheme authentication requested by ${Uri.tryParse(endpoint)?.host ?? endpoint}.'),
+          if (savedAccounts.isNotEmpty)
+            DropdownButtonFormField<String>(
+              initialValue: selectedUsername, isExpanded: true,
+              decoration: const InputDecoration(labelText: 'Saved account'),
+              items: savedAccounts.map((a) => DropdownMenuItem(value: a.username, child: Text(a.username))).toList(),
+              onChanged: (value) async {
+                if (value == null) return;
+                final account = savedAccounts.firstWhere((a) => a.username == value);
+                final password = await credentialVault.readPassword(account);
+                if (!context.mounted) return;
+                setDialogState(() { selectedUsername = value; user.text = value; pass.text = password ?? ''; });
+              },
+            ),
+          TextField(controller: user, decoration: const InputDecoration(labelText: 'Username'),
+            onChanged: (value) => selectedUsername = value),
+          TextField(controller: pass, obscureText: true, decoration: const InputDecoration(labelText: 'Password')),
+          const SizedBox(height: 8),
+          CheckboxListTile(
+            contentPadding: EdgeInsets.zero, value: remember,
+            onChanged: (value) => setDialogState(() => remember = value ?? false),
+            title: const Text('Remember on this device'),
+            subtitle: const Text('Opt in to Android Keystore / iOS Keychain storage.'),
+            controlAffinity: ListTileControlAffinity.leading,
+          ),
+        ])),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(context, (
+            credentials: OnvifCredentials(user.text.trim(), pass.text, realm: realm, scheme: scheme),
+            remember: remember,
+          )), child: const Text('Continue')),
+        ],
+      )),
+    );
+    user.dispose();
+    if (value == null) { pass.dispose(); return null; }
+    if (value.remember) {
+      try {
+        await credentialVault.save(endpoint: endpoint, realm: realm, scheme: scheme,
+          username: value.credentials.username, password: value.credentials.password);
+      } catch (error) {
+        await diagnostics.log('warning', 'Secure credential save unavailable: $error');
+        if (mounted) _msg('Secure storage is unavailable. These credentials will be used for this session only.');
+      }
+    }
+    pass.dispose();
+    return value.credentials;
+  }
+
+  Future<void> _manageSavedCredentials() async {
+    List<CredentialAccount> accounts;
+    try { accounts = await credentialVault.listAccounts(); }
+    catch (error) { _msg('Could not access secure credential storage: $error'); return; }
+    if (!mounted) return;
+    await showDialog<void>(context: context,
+      builder: (context) => StatefulBuilder(builder: (context, setDialogState) => AlertDialog(
+        title: const Text('Saved camera credentials'),
+        content: SizedBox(width: 520, child: accounts.isEmpty
+          ? const Text('No camera credentials are saved on this device.')
+          : ListView(shrinkWrap: true, children: accounts.map((account) => ListTile(
+              contentPadding: EdgeInsets.zero,
+              title: Text(account.username),
+              subtitle: Text(account.endpoint, maxLines: 2, overflow: TextOverflow.ellipsis),
+              trailing: IconButton(tooltip: 'Remove saved credential', icon: const Icon(Icons.delete_outline),
+                onPressed: () async {
+                  try {
+                    await credentialVault.delete(account);
+                    final refreshed = await credentialVault.listAccounts();
+                    setDialogState(() => accounts = refreshed);
+                  } catch (error) { if (mounted) _msg('Could not remove saved credential: $error'); }
+                }),
+            )).toList())),
+        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close'))],
+      )),
+    );
   }
 
   Future<void> _load() async {
@@ -1597,6 +1682,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
     _tool(Icons.backup,'Back up local inventory','Create a consistent SQLite backup of saved devices and operation history.',()=>unawaited(_backupInventory())),
     _tool(Icons.settings_backup_restore,'Restore inventory backup','Validate a backup and retain a recovery snapshot before restoring.',()=>unawaited(_restoreInventory())),
     _tool(Icons.file_download,'Export inventory','Share the current inventory as CSV.',()=>unawaited(_export())),
+    _tool(Icons.key_outlined,'Manage saved camera credentials','View and remove credentials stored in the OS secure vault.',()=>unawaited(_manageSavedCredentials())),
     const SizedBox(height:12),const Text('iOS multicast/broadcast requires Apple multicast entitlement and physical-device validation. Android local-network permissions are handled by the native bootstrap runner.',style:TextStyle(color:muted,fontSize:12)),
   ]));
 

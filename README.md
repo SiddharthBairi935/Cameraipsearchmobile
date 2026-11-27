@@ -36,9 +36,8 @@ Ported classification and discovery are triage features, not vendor certificatio
 
 ## Security and credential handling
 
-- Camera credentials are session-only and are not intentionally persisted.
-- No Android Keystore or iOS Keychain credential-vault provider is implemented.
-- No plaintext fallback is permitted if a future secure-vault provider is unavailable.
+- Camera credentials are session-only by default; explicit opt-in stores credentials using Android Keystore / iOS Keychain through `flutter_secure_storage`.
+- Saved accounts can be reviewed and removed in Settings. Secure-storage failures never fall back to plaintext.
 - Diagnostic redaction is best-effort; users must inspect support bundles before sharing.
 - See [mobile security and privacy review](docs/security-and-privacy-review.md) and [credential-storage design](docs/credential-storage-mobile.md).
 
