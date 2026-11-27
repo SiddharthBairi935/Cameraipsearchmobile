@@ -77,6 +77,23 @@ class OnvifDeviceService {
     }
 
     try {
+      final services = await _post(updated, 'GetServices',
+          body: '<tds:IncludeCapability>false</tds:IncludeCapability>');
+      final serviceNames = services.descendants.whereType<XmlElement>()
+          .where((e) => e.name.local == 'Service')
+          .map((e) => _text(e, 'Namespace'))
+          .where((v) => v.isNotEmpty)
+          .map((v) => 'Service: ${v.split('/').where((p) => p.isNotEmpty).last}')
+          .toSet();
+      updated = updated.copyWith(
+        capabilities: {...updated.capabilities, ...serviceNames}.toList(),
+        discoverySources: _append(updated.discoverySources, 'ONVIF GetServices'),
+      );
+    } on OnvifException {
+      // Service inventory is optional on partially compliant cameras.
+    }
+
+    try {
       updated = await _refreshNetworkInterfaces(updated);
     } on OnvifException {
       // Keep device information even if this optional query is unsupported.
