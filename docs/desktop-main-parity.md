@@ -21,6 +21,8 @@
 | Operation-level compatibility evidence | Desktop reports responded / implemented / advertised / auth-unverified / not-reported / not-implemented states | Implemented in mobile Maintenance workspace; based on recorded response sources and advertised service names, not certification |
 | Sequential bulk static IPv4 | Mobile has range planner, full-batch preview, explicit confirmation, sequential ONVIF writes, per-camera immediate re-probe, post-write address verification and per-target history | **Execution remains fail-closed**: the generated Android probe reports conflict when responsive and unknown when silent; iOS has no live probe. Neither platform currently produces a positive clear result, so the apply action stays disabled until a validated ARP/DAD backend is implemented and physically verified |
 | Local inventory, operation history, backup/restore and diagnostics | SQLite and mobile-native file sharing | Implemented in code; inspect exports before sharing |
+| Factory reset | UI action intentionally disabled, matching desktop | Do not enable from ONVIF discovery alone; exact model/firmware and recovery evidence are required |
+| Inventory CSV export | Complete saved inventory | Includes device identity, capabilities and network fields |
 | Desktop focused workspace | Inventory-first mobile screen and selected-device Details / Configure / History bottom sheet | Implemented as a mobile-native adaptation |
 | Desktop Configure groups | Device / Network / Storage sections inside mobile Configure tab | Implemented in code |
 | Dark Oxita graphite/charcoal palette | Dark mobile surfaces with restrained red accent | Implemented in code; visual review on physical phone remains |

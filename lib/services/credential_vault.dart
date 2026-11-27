@@ -29,7 +29,7 @@ class CredentialAccount {
     scheme: json['scheme'] as String, username: json['username'] as String,
   );
   String get passwordKey => 'oxita.onvif.password.v1.${sha256.convert(utf8.encode(identity))}';
-  String get identity => [endpoint.trim(), realm.trim(), scheme.trim().toLowerCase(), username.trim()].join('|');
+  String get identity => jsonEncode([endpoint.trim(), realm.trim(), scheme.trim().toLowerCase(), username.trim()]);
 }
 
 class CredentialVault {
