@@ -124,6 +124,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
     } catch (error) {
       await diagnostics.log('warning', 'Secure credential lookup unavailable: $error');
     }
+    if (!mounted) { user.dispose(); pass.dispose(); return null; }
     var remember = false;
     var selectedUsername = savedAccounts.isEmpty ? '' : savedAccounts.first.username;
     final value = await showDialog<({OnvifCredentials credentials, bool remember})>(
