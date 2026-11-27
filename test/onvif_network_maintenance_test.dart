@@ -96,8 +96,8 @@ void main() {
         discoverySources: const ['ONVIF WS-Discovery'],
       ));
       expect(refreshed.discoverySources, contains('ONVIF GetServices'));
-      expect(refreshed.capabilities, contains('Service: device'));
-      expect(refreshed.capabilities, contains('Service: media'));
+      expect(refreshed.capabilities, contains('Service: Device'));
+      expect(refreshed.capabilities, contains('Service: Media'));
     } finally { await subscription.cancel(); await server.close(force: true); }
   });
 
