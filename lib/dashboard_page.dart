@@ -514,7 +514,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
         Text('Static IPv4 changes require a verified ONVIF interface token. Preview validates values without sending a request. Applying may interrupt connectivity; there is no automatic rollback.'),
         SizedBox(height: 10),
         Text('Camera maintenance', style: TextStyle(fontWeight: FontWeight.w800)),
-        Text('ONVIF factory reset supports explicit Soft/Hard requests when the camera exposes and authorizes SetSystemFactoryDefault. It can erase settings and change the camera IP. Reboot, activation, NVR channels and firmware flashing remain unavailable.'),
+        Text('ONVIF reboot requests require explicit confirmation. Factory reset remains disabled until exact-model/firmware support and recovery behavior are verified. Activation, NVR channels and firmware flashing are unavailable.'),
         SizedBox(height: 10),
         Text('Bulk IPv4', style: TextStyle(fontWeight: FontWeight.w800)),
         Text('Desktop main supports sequential bulk static IPv4 assignment after a complete preview and per-camera conflict checks. Mobile keeps execution blocked unless a platform probe can positively establish that each address is clear; unknown is never treated as free.'),
@@ -1429,7 +1429,8 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
       ]);
     }
     final canConfigure = device.ipv4ConfigurationKnown && device.networkInterfaceToken.isNotEmpty;
-    final canFactoryReset = device.discoverySources.any((source) => source.startsWith('ONVIF')) && device.deviceServiceUrl.isNotEmpty;
+    // Match desktop safety policy: ONVIF discovery alone does not prove factory-reset support.
+    const canFactoryReset = false;
     return ListView(padding: const EdgeInsets.all(18), children: [
       _heading('Maintenance', 'Actions for the selected camera'),
       const SizedBox(height: 14),
@@ -1462,7 +1463,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
       OutlinedButton.icon(
         onPressed: canFactoryReset ? () => unawaited(_factoryReset(device)) : null,
         icon: const Icon(Icons.restore, color: Color(0xFFC62836)),
-        label: const Text('Factory reset camera'),
+        label: const Text('Factory reset unavailable — model validation required'),
       ),
       OutlinedButton.icon(
         onPressed: canFactoryReset ? () => unawaited(_rebootCamera(device)) : null,
@@ -1513,7 +1514,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
       )),
       const SizedBox(height: 8),
       _cap('Factory reset', 'ONVIF Soft/Hard request · camera support and authorization required', true),
-      _cap('Reboot', 'Not implemented', false),
+      _cap('Reboot', 'ONVIF SystemReboot request · explicit confirmation; acceptance is not completion', true),
       _cap('DHCP / DNS write configuration', 'ONVIF writes with read-back verification', true),
       const SizedBox(height: 14),
       _heading('Compatibility', 'Operation-level support and evidence'),

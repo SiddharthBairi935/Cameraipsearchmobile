@@ -78,11 +78,16 @@ class CredentialVault {
     final account = CredentialAccount(endpoint: normalized, realm: realm, scheme: scheme.toLowerCase(), username: cleanUsername);
     final existing = await listAccounts();
     final next = existing.where((item) => item.identity != account.identity).toList()..add(account);
+    final previousPassword = await _storage.read(account.passwordKey);
     await _storage.write(account.passwordKey, password);
     try {
       await _storage.write(indexKey, jsonEncode(next.map((item) => item.toJson()).toList()));
     } catch (_) {
-      await _storage.delete(account.passwordKey);
+      if (previousPassword == null) {
+        await _storage.delete(account.passwordKey);
+      } else {
+        await _storage.write(account.passwordKey, previousPassword);
+      }
       rethrow;
     }
   }
@@ -90,7 +95,7 @@ class CredentialVault {
   Future<void> delete(CredentialAccount account) async {
     final existing = await listAccounts();
     final next = existing.where((item) => item.identity != account.identity).toList();
-    await _storage.delete(account.passwordKey);
     await _storage.write(indexKey, jsonEncode(next.map((item) => item.toJson()).toList()));
+    await _storage.delete(account.passwordKey);
   }
 }
