@@ -524,80 +524,6 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
     ));
   }
 
-  Future<void> _factoryReset(CameraDevice device) async {
-    if (!device.discoverySources.any((source) => source.startsWith('ONVIF')) ||
-        device.deviceServiceUrl.isEmpty) {
-      _msg('Factory reset requires a verified ONVIF camera. Refresh device information first.');
-      return;
-    }
-    var mode = 'Soft';
-    final selectedMode = await showDialog<String>(
-      context: context,
-      builder: (context) => StatefulBuilder(builder: (context, setDialogState) => AlertDialog(
-        title: const Text('Choose factory-reset mode'),
-        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('Target: ${device.ipAddress} · ${device.manufacturer} · ${device.model}'),
-          const SizedBox(height: 12),
-          RadioGroup<String>(
-            groupValue: mode,
-            onChanged: (value) => setDialogState(() => mode = value ?? 'Soft'),
-            child: Column(
-              children: const [
-                RadioListTile<String>(
-                  contentPadding: EdgeInsets.zero,
-                  value: 'Soft',
-                  title: Text('Soft reset'),
-                  subtitle: Text('Restore device settings while retaining factory-default behavior defined by the camera'),
-                ),
-                RadioListTile<String>(
-                  contentPadding: EdgeInsets.zero,
-                  value: 'Hard',
-                  title: Text('Hard reset'),
-                  subtitle: Text('Request the camera’s hard factory-default mode; support varies by model'),
-                ),
-              ],
-            ),
-          ),
-        ]),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(context, mode), child: const Text('Continue')),
-        ],
-      )),
-    );
-    if (selectedMode == null || !mounted) return;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Confirm destructive camera reset'),
-        content: Text(
-          'Send ONVIF SetSystemFactoryDefault ($selectedMode) to ${device.ipAddress}? '
-          'This may erase configuration, reset credentials, interrupt video and change the camera IP. '
-          'There is no automatic rollback. The camera must explicitly support and authorize this ONVIF operation.',
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Go back')),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: const Color(0xFFC62836)),
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Send reset request'),
-          ),
-        ],
-      ),    );
-    if (confirmed != true || !mounted) return;
-    try {
-      final message = await discovery.factoryReset(device, factoryDefaultType: selectedMode);
-      await _record('Factory reset', device.ipAddress, 'Accepted', message);
-      _msg(message);
-    } on OnvifException catch (error) {
-      await _record('Factory reset', device.ipAddress, 'Failed', error.message);
-      _msg(error.message);
-    } catch (error) {
-      await _record('Factory reset', device.ipAddress, 'Failed', error.toString());
-      _msg('Factory reset request failed: $error');
-    }
-  }
-
   Future<void> _configureDhcp(CameraDevice device) async {
     if (!device.ipv4ConfigurationKnown || device.networkInterfaceToken.isEmpty) {
       _msg('Refresh the camera first to obtain a verified ONVIF interface token.'); return;
@@ -1430,8 +1356,8 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
       ]);
     }
     final canConfigure = device.ipv4ConfigurationKnown && device.networkInterfaceToken.isNotEmpty;
-    // Match desktop safety policy: ONVIF discovery alone does not prove factory-reset support.
-    const canFactoryReset = false;
+    // Factory reset remains unavailable until exact-model/firmware validation is recorded.
+    final canReboot = device.discoverySources.any((source) => source.startsWith('ONVIF')) && device.deviceServiceUrl.isNotEmpty;
     return ListView(padding: const EdgeInsets.all(18), children: [
       _heading('Maintenance', 'Actions for the selected camera'),
       const SizedBox(height: 14),
@@ -1462,12 +1388,12 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
       _heading('Camera maintenance', 'Only verified ONVIF operations are exposed'),
       const SizedBox(height: 8),
       OutlinedButton.icon(
-        onPressed: canFactoryReset ? () => unawaited(_factoryReset(device)) : null,
+        onPressed: null,
         icon: const Icon(Icons.restore, color: Color(0xFFC62836)),
         label: const Text('Factory reset unavailable — model validation required'),
       ),
       OutlinedButton.icon(
-        onPressed: canFactoryReset ? () => unawaited(_rebootCamera(device)) : null,
+        onPressed: canReboot ? () => unawaited(_rebootCamera(device)) : null,
         icon: const Icon(Icons.restart_alt), label: const Text('Reboot camera'),
       ),
       const SizedBox(height: 20),
