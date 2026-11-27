@@ -33,10 +33,13 @@ void main() {
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     var prompted = 0;
     var wsseRequests = 0;
+    var authenticated = false;
     final subscription = server.listen((request) async {
       final body = await utf8.decoder.bind(request).join();
+      final operation = RegExp(r'<tds:(GetDeviceInformation|GetCapabilities|GetNetworkInterfaces|GetDNS)>').firstMatch(body)?.group(1) ?? 'GetDeviceInformation';
       if (body.contains('<wsse:Security')) {
         wsseRequests++;
+        authenticated = true;
         final nonceText = RegExp(r'<wsse:Nonce[^>]*>([^<]+)</wsse:Nonce>').firstMatch(body)!.group(1)!;
         final created = RegExp(r'<wsu:Created>([^<]+)</wsu:Created>').firstMatch(body)!.group(1)!;
         final passwordDigest = RegExp(r'<wsse:Password[^>]*>([^<]+)</wsse:Password>').firstMatch(body)!.group(1)!;
@@ -45,12 +48,17 @@ void main() {
         ]).bytes);
         expect(passwordDigest, expected);
         expect(body, contains('<wsse:Username>admin</wsse:Username>'));
-        request.response.headers.contentType = ContentType('application', 'soap+xml', charset: 'utf-8');
-        request.response.write('<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope" xmlns:tds="http://www.onvif.org/ver10/device/wsdl"><s:Body><tds:GetDeviceInformationResponse><tds:Manufacturer>Oxita</tds:Manufacturer><tds:Model>WSSE camera</tds:Model></tds:GetDeviceInformationResponse></s:Body></s:Envelope>');
-      } else {
+      } else if (!authenticated) {
         request.response.headers.contentType = ContentType('application', 'soap+xml', charset: 'utf-8');
         request.response.write('<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope"><s:Body><s:Fault><s:Code><s:Value>wsse:FailedAuthentication</s:Value></s:Code><s:Reason><s:Text>Authentication required</s:Text></s:Reason></s:Fault></s:Body></s:Envelope>');
+        await request.response.close();
+        return;
       }
+      request.response.headers.contentType = ContentType('application', 'soap+xml', charset: 'utf-8');
+      final responseBody = operation == 'GetDeviceInformation'
+          ? '<tds:Manufacturer>Oxita</tds:Manufacturer><tds:Model>WSSE camera</tds:Model>'
+          : '';
+      request.response.write('<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope" xmlns:tds="http://www.onvif.org/ver10/device/wsdl"><s:Body><tds:${operation}Response>$responseBody</tds:${operation}Response></s:Body></s:Envelope>');
       await request.response.close();
     });
     try {
